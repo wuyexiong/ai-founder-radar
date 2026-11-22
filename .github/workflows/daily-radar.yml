@@ -1,0 +1,32 @@
+name: Daily IndieRadar Sync
+
+on:
+  schedule:
+    # 每天 UTC 23:00 运行（对应北京时间早上 07:00），同时自动保活 Supabase 免费库
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-signals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Multi-Source Fetch & AI Distillation
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: npm run radar:sync
