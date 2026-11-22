@@ -115,7 +115,7 @@ export async function fetchRedditSubreddits(
   for (const sub of subreddits) {
     try {
       const res = await fetch(
-        `https://www.reddit.com/r/${sub}/top/.rss?t=day&limit=${perSub}`,
+        `https://www.reddit.com/r/${sub}/top.rss?t=day&limit=${perSub}`,
         {
           headers: {
             "User-Agent":
