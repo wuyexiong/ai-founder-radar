@@ -4,6 +4,21 @@ import * as schema from "./schema";
 
 let cachedDb: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
+export function normalizeDatabaseUrl(rawUrl: string): string {
+  const unbracketed = rawUrl
+    .trim()
+    .replace(/^(postgresql:\/\/[^:]+:)\[([^\]]+)\](@.+)$/, "$1$2$3");
+  try {
+    const parsed = new URL(unbracketed);
+    // 兼容 Neon (channel_binding=require) 与 Supabase (pgbouncer=true) 连接串参数
+    parsed.searchParams.delete("channel_binding");
+    parsed.searchParams.delete("pgbouncer");
+    return parsed.toString();
+  } catch {
+    return unbracketed;
+  }
+}
+
 export function hasDatabaseConfigured(): boolean {
   const url = process.env.DATABASE_URL?.trim();
   return Boolean(url && url.startsWith("postgres"));
@@ -14,8 +29,9 @@ export function getDb() {
     return null;
   }
   if (!cachedDb) {
-    const client = postgres(process.env.DATABASE_URL!, {
-      prepare: false, // Required for Supabase Transaction Pooler
+    const cleanUrl = normalizeDatabaseUrl(process.env.DATABASE_URL!);
+    const client = postgres(cleanUrl, {
+      prepare: false, // 同时兼容 Supabase Pooler 与 Neon Pooler
       max: 5,
     });
     cachedDb = drizzle(client, { schema });

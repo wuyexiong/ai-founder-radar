@@ -108,52 +108,82 @@ export async function fetchProductHuntFeed(limit = 8): Promise<RawFetchedItem[]>
 
 export async function fetchRedditSubreddits(
   subreddits = ["microsaas", "SaaS", "SomebodyMakeThis"],
-  perSub = 4
+  perSub = 3
 ): Promise<RawFetchedItem[]> {
   const results: RawFetchedItem[] = [];
 
   for (const sub of subreddits) {
     try {
       const res = await fetch(
-        `https://www.reddit.com/r/${sub}/top.json?t=day&limit=${perSub}`,
-        { headers: { "User-Agent": USER_AGENT } }
+        `https://www.reddit.com/r/${sub}/top/.rss?t=day&limit=${perSub}`,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+            Accept: "application/atom+xml,application/xml,text/xml",
+          },
+        }
       );
-      if (!res.ok) continue;
-      const json = (await res.json()) as {
-        data?: {
-          children?: Array<{
-            data: {
-              title: string;
-              selftext?: string;
-              permalink: string;
-              ups?: number;
-              num_comments?: number;
-              created_utc?: number;
-            };
-          }>;
-        };
-      };
+      if (res.ok) {
+        const xml = await res.text();
+        const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) ?? [];
+        for (const entry of entries.slice(0, perSub)) {
+          const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? "";
+          const content = entry.match(/<content[^>]*>([\s\S]*?)<\/content>/)?.[1] ?? "";
+          const link = entry.match(/<link[^>]*href="([^"]+)"/)?.[1] ?? "";
+          const updated = entry.match(/<updated>([\s\S]*?)<\/updated>/)?.[1] ?? "";
+          if (!title || !link) continue;
 
-      const posts = json.data?.children ?? [];
-      for (const post of posts) {
-        const d = post.data;
-        results.push({
-          title: d.title,
-          summary: (d.selftext || d.title).replace(/\s+/g, " ").slice(0, 500),
-          url: `https://www.reddit.com${d.permalink}`,
-          sourcePlatform: "reddit",
-          sourceSublabel: `r/${sub}`,
-          rawMetric:
-            sub === "SomebodyMakeThis"
-              ? `💬 ${d.num_comments ?? 0} 痛点讨论`
-              : `▲ ${d.ups ?? 0} · ${d.num_comments ?? 0} 评`,
-          publishedAt: d.created_utc
-            ? new Date(d.created_utc * 1000).toISOString()
-            : new Date().toISOString(),
-        });
+          results.push({
+            title: decodeXmlEntities(title),
+            summary: decodeXmlEntities(content).slice(0, 450),
+            url: link,
+            sourcePlatform: "reddit",
+            sourceSublabel: `r/${sub}`,
+            rawMetric: sub === "SomebodyMakeThis" ? "💬 Reddit 痛点热帖" : `r/${sub} 今日热帖`,
+            publishedAt: updated ? new Date(updated.trim()).toISOString() : new Date().toISOString(),
+          });
+        }
       }
     } catch (err) {
-      console.warn(`[Collector] Reddit r/${sub} fetch skipped:`, err);
+      console.warn(`[Collector] Reddit RSS r/${sub} skipped:`, err);
+    }
+  }
+
+  // 若代理 IP 被 Reddit 拦截返回空，自动通过 HN Algolia 免费接口补充 SaaS 营收与 Ask HN 痛点帖
+  if (results.length === 0) {
+    try {
+      const algoliaRes = await fetch(
+        "https://hn.algolia.com/api/v1/search_by_date?tags=(story,ask_hn)&query=SaaS%20OR%20MRR%20OR%20pricing%20OR%20alternative&hitsPerPage=5"
+      );
+      if (algoliaRes.ok) {
+        const data = (await algoliaRes.json()) as {
+          hits?: Array<{
+            objectID: string;
+            title: string;
+            story_text?: string;
+            url?: string;
+            points?: number;
+            num_comments?: number;
+            created_at?: string;
+          }>;
+        };
+        for (const hit of data.hits ?? []) {
+          results.push({
+            title: hit.title,
+            summary: hit.story_text
+              ? decodeXmlEntities(hit.story_text).slice(0, 450)
+              : hit.title,
+            url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+            sourcePlatform: "hackernews",
+            sourceSublabel: hit.title.startsWith("Ask HN") ? "Ask HN 痛点" : "HN 创业讨论",
+            rawMetric: `▲ ${hit.points ?? 0} · 💬 ${hit.num_comments ?? 0}`,
+            publishedAt: hit.created_at || new Date().toISOString(),
+          });
+        }
+      }
+    } catch {
+      // ignore
     }
   }
 

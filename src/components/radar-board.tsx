@@ -292,7 +292,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               )}
             >
               {storageMode === "supabase"
-                ? "● Supabase 实时库"
+                ? "● 云端 PostgreSQL 实时库"
                 : "● 本地精选样本模式（配好 .env.local 自动切云端）"}
             </span>
           </div>

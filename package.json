@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "radar:sync": "tsx scripts/sync-radar.ts",
+    "radar:sync": "node --import tsx --use-env-proxy scripts/sync-radar.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
