@@ -98,10 +98,13 @@ async function fetchPageMetaSnippet(
 // 1. Show HN（深化去噪：热度增速筛选 + 剔除纯玩具 Demo + 补全作者首评/落地页摘要）
 // ============================================================================
 const HN_TOY_PATTERN =
-  /\b(game|racing|chess|wordle|puzzle|retro|ps1|gameboy|emulator|nes|shader|raytracer|fractal|compiler|kernel|without a runtime|proof|riemann|lean4|coq|ascii|quine|dotfiles|advent of code|font|synthesizer|drum machine)\b/i;
+  /\b(game|gaming|arcade|racing|chess|wordle|puzzle|retro|80s|ps1|gameboy|emulator|nes|shader|raytracer|fractal|compiler|kernel|without a runtime|proof|riemann|lean4|coq|ascii|quine|dotfiles|advent of code|font|synthesizer|drum machine)\b/i;
+
+const HN_HARD_MONETIZATION_OVERRIDE =
+  /\b(saas|pricing|stripe|customer|b2b|mrr|arr|revenue|invoice|billing|crm)\b/i;
 
 const HN_COMMERCIAL_PATTERN =
-  /\b(saas|pricing|stripe|customer|b2b|api|sdk|cli|agent|workflow|automation|analytics|crm|monitor|deploy|postgres|database|scraping|browser|email|marketing|seo|invoice|billing|pdf|editor|studio|workspace|mac|ios|chrome extension|copilot|assistant|webhook|auth)\b/i;
+  /\b(saas|pricing|stripe|customer|b2b|api|sdk|cli|agent|workflow|automation|analytics|crm|monitor|deploy|postgres|database|scraping|email|marketing|seo|invoice|billing|pdf|editor|studio|workspace|mac|ios|chrome extension|copilot|assistant|webhook|auth)\b/i;
 
 export async function fetchHackerNewsShowHN(
   limit = 4,
@@ -139,8 +142,7 @@ export async function fetchHackerNewsShowHN(
 
           const textBlob = `${h.title} ${h.story_text ?? ""} ${h.url ?? ""}`;
           const isToy = HN_TOY_PATTERN.test(textBlob);
-          const hasCommercialSignal = HN_COMMERCIAL_PATTERN.test(textBlob);
-          if (isToy && !hasCommercialSignal) return false;
+          if (isToy && !HN_HARD_MONETIZATION_OVERRIDE.test(textBlob)) return false;
           return true;
         })
         .map((h) => {
@@ -345,10 +347,11 @@ export async function fetchIndieHackers(
 
     const candidates: Array<RawFetchedItem & { rank: number; needBodyFetch?: boolean }> = [];
 
-    // 3a. 解析首页社区热帖与 Featured Numbers 营收报道
+    // 3a. 解析首页顶部实时社区热帖与 Featured 当日快讯（截断底部常青分类归档区）
     if (homeRes.status === "fulfilled" && homeRes.value.ok) {
       const md = await homeRes.value.text();
-      const postBlocks = md.split(/^###\s+/m).slice(1);
+      // 仅取首页前 18 个实时流条目，避开页面底部数月前的 /post/tech 等静态归档块
+      const postBlocks = md.split(/^###\s+/m).slice(1, 19);
       addScannedCount(postBlocks.length);
 
       for (const block of postBlocks) {
@@ -359,6 +362,8 @@ export async function fetchIndieHackers(
         const rawTitle = headerMatch[1].trim();
         const rawUrl = headerMatch[2].split("#")[0];
         if (excludeUrls?.has(rawUrl)) continue;
+        // 跳过旧版静态专栏路径
+        if (/\/post\/(tech|lifestyle|creators|ai)\//i.test(rawUrl)) continue;
 
         const upvotes = Number(block.match(/\[(\d+)\s+upvotes?\]/i)?.[1] ?? "0");
         const comments = Number(block.match(/\[(\d+)\s+comments?\]/i)?.[1] ?? "0");
@@ -423,11 +428,11 @@ export async function fetchIndieHackers(
       }
     }
 
-    const picked = candidates.sort((a, b) => b.rank - a.rank).slice(0, limit + 2);
+    const picked = candidates.sort((a, b) => b.rank - a.rank).slice(0, limit + 3);
     const freshPicked: typeof picked = [];
-    const maxAgeMs = 30 * 24 * 3600 * 1000; // 严格过滤超过 30 天的常青旧帖
+    const maxAgeMs = 7 * 24 * 3600 * 1000; // 严格锁定最近 7 天内的新帖
 
-    // 为选中的社区热帖抓取首段正文并校验真实发布时间，杜绝陈年旧文混入
+    // 为选中的社区热帖抓取首段正文，并双重校验 Header 与正文日期，严防旧帖混入
     await Promise.all(
       picked.map(async (item) => {
         if (!item.needBodyFetch) {
@@ -440,17 +445,20 @@ export async function fetchIndieHackers(
             { headers: { "X-Return-Format": "markdown" } },
             6500
           );
-          if (!detailRes.ok) {
-            freshPicked.push(item);
-            return;
-          }
+          if (!detailRes.ok) return;
           const detailMd = await detailRes.text();
-          const pubLine = detailMd.match(/^Published Time:\s*(.+)$/m)?.[1]?.trim();
-          if (pubLine) {
-            const pubTs = Date.parse(pubLine);
+
+          const headerDateStr = detailMd.match(/^Published Time:\s*(.+)$/m)?.[1]?.trim();
+          const bodyDateStr = detailMd.match(
+            /\[((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})\]/i
+          )?.[1];
+          const dateCandidate = headerDateStr || bodyDateStr;
+
+          if (dateCandidate) {
+            const pubTs = Date.parse(dateCandidate);
             if (Number.isFinite(pubTs)) {
               if (Date.now() - pubTs > maxAgeMs) {
-                return; // 丢弃超过 30 天的历史旧帖
+                return; // 丢弃超过 7 天的旧帖
               }
               item.publishedAt = new Date(pubTs).toISOString();
             }
@@ -748,7 +756,10 @@ export async function fetchRedditSubreddits(
         const apiUrl = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${encodeURIComponent(
           sub
         )}&after=${afterSec}&limit=60`;
-        const res = await fetchWithTimeout(apiUrl, {}, 12000);
+        let res = await fetchWithTimeout(apiUrl, {}, 16000).catch(() => null);
+        if (!res || !res.ok) {
+          res = await fetchWithTimeout(apiUrl, {}, 16000);
+        }
         if (!res.ok) return;
 
         const payload = (await res.json()) as {

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   ExternalLink,
   Flame,
@@ -13,6 +15,7 @@ import {
   Mail,
   Moon,
   Radar,
+  RotateCcw,
   Search,
   Sparkles,
   Sun,
@@ -21,39 +24,76 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { SignalCard } from "@/components/signal-card";
+import { PLATFORM_META, SignalCard } from "@/components/signal-card";
 import type { RadarPagePayload } from "@/lib/signals-repo";
 import { cn } from "@/lib/utils";
-import type { SignalCategory } from "@/types/signal";
+import type { SignalCategory, SignalItem, SourcePlatform } from "@/types/signal";
 
 type TabFilter = "top" | "all" | SignalCategory | "saved";
 
 const TABS: Array<{ id: TabFilter; label: string; icon: React.ReactNode }> = [
-  { id: "top", label: "今日必读精选", icon: <Flame className="h-3.5 w-3.5 text-orange-500" /> },
+  {
+    id: "top",
+    label: "今日必读精选",
+    icon: <Flame className="h-3.5 w-3.5 text-orange-500" />,
+  },
   { id: "all", label: "全部信号", icon: <Layers className="h-3.5 w-3.5" /> },
-  { id: "revenue", label: "搞钱实战 & MRR", icon: <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> },
-  { id: "launch", label: "新品首发", icon: <Sparkles className="h-3.5 w-3.5 text-amber-500" /> },
-  { id: "pain_point", label: "海外痛点池", icon: <Target className="h-3.5 w-3.5 text-blue-500" /> },
+  {
+    id: "revenue",
+    label: "搞钱实战 & MRR",
+    icon: <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />,
+  },
+  {
+    id: "launch",
+    label: "新品首发",
+    icon: <Sparkles className="h-3.5 w-3.5 text-amber-500" />,
+  },
+  {
+    id: "pain_point",
+    label: "海外痛点池",
+    icon: <Target className="h-3.5 w-3.5 text-blue-500" />,
+  },
 ];
 
+const PLATFORM_ORDER: SourcePlatform[] = [
+  "producthunt",
+  "hackernews",
+  "indiehackers",
+  "acquire",
+  "reddit",
+  "github",
+  "trustmrr",
+  "appstore",
+];
+
+const COLLAPSED_TAG_LIMIT = 10;
+
 export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
-  const { availableDates, activeDate, overview, items, tools, storageMode } = payload;
+  const { availableDates, activeDate, overview, items, tools, storageMode } =
+    payload;
 
   const [activeTab, setActiveTab] = useState<TabFilter>("top");
+  const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
+    null
+  );
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [isDark, setIsDark] = useState(false);
   const [emailInput, setEmailInput] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 初始化主题与本地收藏夹
   useEffect(() => {
     const savedTheme = localStorage.getItem("indieradar-theme");
     const prefersDark =
       savedTheme === "dark" ||
-      (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      (!savedTheme &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
     setIsDark(prefersDark);
     document.documentElement.classList.toggle("dark", prefersDark);
 
@@ -65,6 +105,10 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     } catch {
       // ignore invalid json
     }
+
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
   }, []);
 
   // ⌘K 快捷键聚焦搜索框
@@ -105,30 +149,79 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const newerDate =
     currentDateIdx > 0 ? availableDates[currentDateIdx - 1] : null;
 
-  // 统计热门标签
+  // 第一级过滤：按当前频道 Tab 过滤的基础集合
+  const tabScopedItems = useMemo(() => {
+    return items.filter((item) => {
+      if (activeTab === "top") return item.isTopPick;
+      if (activeTab === "saved") return bookmarks.includes(item.id);
+      if (activeTab === "all") return true;
+      return item.category === activeTab;
+    });
+  }, [items, activeTab, bookmarks]);
+
+  // 信源平台计数：展示当日所有有数据的平台，同时呈现当前 Tab 内命中数与全局数
+  const platformOptions = useMemo(() => {
+    const totalByPlat = new Map<SourcePlatform, number>();
+    const tabByPlat = new Map<SourcePlatform, number>();
+
+    for (const item of items) {
+      totalByPlat.set(
+        item.sourcePlatform,
+        (totalByPlat.get(item.sourcePlatform) ?? 0) + 1
+      );
+    }
+    for (const item of tabScopedItems) {
+      tabByPlat.set(
+        item.sourcePlatform,
+        (tabByPlat.get(item.sourcePlatform) ?? 0) + 1
+      );
+    }
+
+    return PLATFORM_ORDER.filter((p) => (totalByPlat.get(p) ?? 0) > 0).map(
+      (platform) => ({
+        platform,
+        tabCount: tabByPlat.get(platform) ?? 0,
+        totalCount: totalByPlat.get(platform) ?? 0,
+      })
+    );
+  }, [items, tabScopedItems]);
+
+  // 第二级过滤：当前 Tab + 当前信源平台下的集合，用于实时动态计算「热门搞钱切口」
+  const platformScopedItems = useMemo(() => {
+    if (!activePlatform) return tabScopedItems;
+    return tabScopedItems.filter((i) => i.sourcePlatform === activePlatform);
+  }, [tabScopedItems, activePlatform]);
+
+  // 实时联动标签计数（随频道与信源动态重算，杜绝点出空列表）
   const tagCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const item of items) {
+    for (const item of platformScopedItems) {
       for (const tag of item.tags) {
         map.set(tag, (map.get(tag) ?? 0) + 1);
       }
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [items]);
+  }, [platformScopedItems]);
 
-  // 过滤列表
+  // 折叠态默认展示 Top 10 标签；若当前选中的长尾标签不在前 10，自动置顶确保可见
+  const displayedTags = useMemo(() => {
+    if (tagsExpanded || tagCounts.length <= COLLAPSED_TAG_LIMIT) {
+      return tagCounts;
+    }
+    const topSlice = tagCounts.slice(0, COLLAPSED_TAG_LIMIT);
+    if (activeTag && !topSlice.some(([t]) => t === activeTag)) {
+      const activeEntry = tagCounts.find(([t]) => t === activeTag);
+      return [
+        activeEntry ?? ([activeTag, 0] as [string, number]),
+        ...topSlice.slice(0, COLLAPSED_TAG_LIMIT - 1),
+      ];
+    }
+    return topSlice;
+  }, [tagCounts, tagsExpanded, activeTag]);
+
+  // 最终展示列表（频道 × 信源 × 标签 × 搜索词）
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      if (activeTab === "top" && !item.isTopPick) return false;
-      if (activeTab === "saved" && !bookmarks.includes(item.id)) return false;
-      if (
-        activeTab !== "top" &&
-        activeTab !== "all" &&
-        activeTab !== "saved" &&
-        item.category !== activeTab
-      ) {
-        return false;
-      }
+    return platformScopedItems.filter((item) => {
       if (activeTag && !item.tags.includes(activeTag)) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -137,15 +230,73 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       }
       return true;
     });
-  }, [items, activeTab, activeTag, searchQuery, bookmarks]);
+  }, [platformScopedItems, activeTag, searchQuery]);
 
   const topThreeItems = useMemo(() => items.slice(0, 3), [items]);
 
-  const handleSelectTag = (tag: string) => {
-    setActiveTag((prev) => (prev === tag ? null : tag));
-    if (activeTab === "top") {
+  const handleSelectPlatform = (platform: SourcePlatform) => {
+    if (activePlatform === platform) {
+      setActivePlatform(null);
+      return;
+    }
+    setActivePlatform(platform);
+    setActiveTag(null);
+    // 若在「今日必读精选」下该平台暂无 >=8.5 分卡片，自动切到「全部信号」避免出现空列表
+    const hasInCurrentTab = tabScopedItems.some(
+      (i) => i.sourcePlatform === platform
+    );
+    if (!hasInCurrentTab) {
       setActiveTab("all");
     }
+  };
+
+  const handleSelectTag = (tag: string) => {
+    if (activeTag === tag) {
+      setActiveTag(null);
+      return;
+    }
+    setActiveTag(tag);
+    const hasInScoped = platformScopedItems.some((i) => i.tags.includes(tag));
+    if (!hasInScoped) {
+      setActiveTab("all");
+      setActivePlatform(null);
+    }
+  };
+
+  // 右侧 Top 3 点击联动：跨 Tab 自动穿透还原视图 + 避开顶栏平滑滚动 + 脉冲边框高亮
+  const handleFocusTopItem = (targetItem: SignalItem) => {
+    const isCurrentlyVisible = filteredItems.some(
+      (i) => i.id === targetItem.id
+    );
+    if (!isCurrentlyVisible) {
+      setActiveTab(targetItem.isTopPick ? "top" : "all");
+      setActivePlatform(null);
+      setActiveTag(null);
+      setSearchQuery("");
+    }
+
+    setHighlightedId(targetItem.id);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedId(null);
+    }, 2200);
+
+    setTimeout(() => {
+      const el = document.getElementById(targetItem.id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
+  };
+
+  const hasSubFilters = Boolean(
+    activePlatform || activeTag || searchQuery.trim()
+  );
+
+  const resetSubFilters = () => {
+    setActivePlatform(null);
+    setActiveTag(null);
+    setSearchQuery("");
   };
 
   return (
@@ -224,7 +375,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -264,7 +415,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         </div>
       </header>
 
-      {/* 紧凑单行情报概览条（零废话首屏，不占大横幅） */}
+      {/* 紧凑单行情报概览条 */}
       <div className="border-b border-slate-200/80 bg-white/60 dark:border-slate-800/70 dark:bg-[#111827]/50">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs sm:px-6">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 dark:text-slate-300">
@@ -300,10 +451,10 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       </div>
 
       {/* 主体双栏容器 */}
-      <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-[1240px] px-4 py-5 sm:px-6">
         {/* 当日主编一句话风向总结 */}
         {overview.summaryNote && (
-          <div className="mb-5 rounded-xl border border-blue-200/80 bg-blue-50/60 px-4 py-3 text-[13.5px] text-slate-700 dark:border-blue-500/20 dark:bg-blue-950/25 dark:text-slate-300">
+          <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/60 px-4 py-2.5 text-[13.5px] text-slate-700 dark:border-blue-500/20 dark:bg-blue-950/25 dark:text-slate-300">
             <span className="font-semibold text-blue-700 dark:text-blue-400">
               今日风向速览：
             </span>
@@ -334,11 +485,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* 左侧主信号流 (~72% = 8.5 cols -> 8 cols on 12-grid) */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+          {/* 左侧主信号流 (8 cols) */}
           <div className="lg:col-span-8">
-            {/* 频道切换胶囊栏 */}
-            <div className="no-scrollbar sticky top-14 z-30 -mx-4 mb-4 flex items-center gap-1.5 overflow-x-auto bg-[#F8FAFC]/95 px-4 py-2 backdrop-blur-sm sm:mx-0 sm:px-0 dark:bg-[#090D16]/95">
+            {/* 一级粘性栏：五大核心信号频道切换 */}
+            <div className="no-scrollbar sticky top-14 z-30 -mx-4 mb-2.5 flex items-center gap-1.5 overflow-x-auto bg-[#F8FAFC]/95 px-4 py-2 backdrop-blur-sm sm:mx-0 sm:px-0 dark:bg-[#090D16]/95">
               {TABS.map((tab) => {
                 const active = activeTab === tab.id;
                 const count =
@@ -352,7 +503,24 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      if (
+                        activePlatform &&
+                        tab.id !== "all" &&
+                        !items.some(
+                          (i) =>
+                            i.sourcePlatform === activePlatform &&
+                            (tab.id === "top"
+                              ? i.isTopPick
+                              : tab.id === "saved"
+                                ? bookmarks.includes(i.id)
+                                : i.category === tab.id)
+                        )
+                      ) {
+                        setActivePlatform(null);
+                      }
+                    }}
                     className={cn(
                       "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer tabular-nums",
                       active
@@ -377,24 +545,146 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               })}
             </div>
 
-            {/* 当前激活的标签过滤提示 */}
-            {activeTag && (
-              <div className="mb-3 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs dark:border-blue-500/30 dark:bg-blue-950/30">
-                <span>
-                  正在按细分标签筛选：
-                  <strong className="ml-1 text-blue-700 dark:text-blue-300">
-                    {activeTag}
-                  </strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveTag(null)}
-                  className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
-                >
-                  清除筛选 <X className="h-3.5 w-3.5" />
-                </button>
+            {/* 二级紧凑联动筛选台：信源平台胶囊 + Top 10 热门搞钱切口（支持折叠抽屉） */}
+            <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]">
+              {/* 第 1 排：信源平台直达 + 一键重置 */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                    信源
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActivePlatform(null)}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                      activePlatform === null
+                        ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    )}
+                  >
+                    全部
+                    <span className="font-mono text-[10px] opacity-75">
+                      {tabScopedItems.length}
+                    </span>
+                  </button>
+
+                  {platformOptions.map(
+                    ({ platform, tabCount, totalCount }) => {
+                      const meta = PLATFORM_META[platform] ?? {
+                        label: platform,
+                        dotClass: "bg-slate-400",
+                      };
+                      const selected = activePlatform === platform;
+                      const displayCount =
+                        tabCount > 0 ? tabCount : totalCount;
+                      const dimmed = tabCount === 0 && !selected;
+
+                      return (
+                        <button
+                          key={platform}
+                          type="button"
+                          onClick={() => handleSelectPlatform(platform)}
+                          title={
+                            tabCount === 0
+                              ? `当前频道无该源，点击自动切至全部信号查看 ${totalCount} 条`
+                              : `筛选 ${meta.label}`
+                          }
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                            selected
+                              ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                              : dimmed
+                                ? "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              selected ? "bg-white" : meta.dotClass
+                            )}
+                          />
+                          <span>{meta.label}</span>
+                          <span className="font-mono text-[10px] opacity-70">
+                            {displayCount}
+                          </span>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+
+                {hasSubFilters && (
+                  <button
+                    type="button"
+                    onClick={resetSubFilters}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    清空筛选
+                  </button>
+                )}
               </div>
-            )}
+
+              {/* 第 2 排：热门搞钱切口（默认仅展示高频 Top 10 + 展开全部折叠抽屉） */}
+              {tagCounts.length > 0 && (
+                <div className="mt-2.5 border-t border-slate-100 pt-2.5 dark:border-slate-800/80">
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center gap-1.5",
+                      tagsExpanded &&
+                        "thin-scrollbar max-h-44 overflow-y-auto pr-1"
+                    )}
+                  >
+                    <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                      切口
+                    </span>
+                    {displayedTags.map(([tag, count]) => {
+                      const selected = activeTag === tag;
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => handleSelectTag(tag)}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                            selected
+                              ? "bg-blue-600 text-white"
+                              : "bg-slate-100/90 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-700"
+                          )}
+                        >
+                          <span>{tag}</span>
+                          <span className="font-mono text-[10px] opacity-70">
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {tagCounts.length > COLLAPSED_TAG_LIMIT && (
+                      <button
+                        type="button"
+                        onClick={() => setTagsExpanded((prev) => !prev)}
+                        className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200 cursor-pointer tabular-nums"
+                      >
+                        {tagsExpanded ? (
+                          <>
+                            收起切口
+                            <ChevronUp className="h-3 w-3" />
+                          </>
+                        ) : (
+                          <>
+                            +{tagCounts.length - COLLAPSED_TAG_LIMIT} 更多切口
+                            <ChevronDown className="h-3 w-3" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 信号卡片列表 */}
             {filteredItems.length > 0 ? (
@@ -404,9 +694,9 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     key={item.id}
                     item={item}
                     isBookmarked={bookmarks.includes(item.id)}
+                    isHighlighted={highlightedId === item.id}
                     activeTag={activeTag}
                     onToggleBookmark={toggleBookmark}
-                    onSelectTag={handleSelectTag}
                   />
                 ))}
               </div>
@@ -415,12 +705,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                   {activeTab === "saved"
                     ? "你还没有收藏任何商机卡片，看到有启发的点子可点右下角「收藏」沉淀灵感。"
-                    : "没有找到匹配当前筛选条件的信号卡片。"}
+                    : "没有找到匹配当前交叉筛选条件的信号卡片。"}
                 </p>
                 <button
                   type="button"
                   onClick={() => {
                     setActiveTab("all");
+                    setActivePlatform(null);
                     setActiveTag(null);
                     setSearchQuery("");
                   }}
@@ -432,63 +723,62 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             )}
           </div>
 
-          {/* 右侧粘性辅助边栏 (~28% = 4 cols on 12-grid) */}
-          <aside className="space-y-4 lg:col-span-4">
-            <div className="sticky top-20 space-y-4">
-              {/* 模块 1：当日商业价值 Top 3 速览 */}
+          {/* 右侧粘性辅助边栏 (4 cols)：首屏一屏尽览三件套 + 小屏独立内滚兜底 */}
+          <aside className="lg:col-span-4">
+            <div className="thin-scrollbar space-y-3.5 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-88px)] lg:overflow-y-auto lg:pr-0.5">
+              {/* 模块 1：当日商业价值 Top 3 速览（点击跨 Tab 穿透定位并脉冲高亮） */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
-                <h2 className="mb-3 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <h2 className="mb-2.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <span>🏆 当日高分商机 Top 3</span>
                   <span className="font-mono text-[11px] font-normal">
-                    商业分
+                    点击定位
                   </span>
                 </h2>
-                <div className="space-y-2.5">
-                  {topThreeItems.map((item, idx) => (
-                    <a
-                      key={item.id}
-                      href={`#${item.id}`}
-                      className="group flex items-start justify-between gap-2.5 rounded-lg p-1.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                    >
-                      <div className="flex items-start gap-2">
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                          0{idx + 1}
-                        </span>
-                        <span className="line-clamp-2 text-xs font-medium leading-relaxed text-slate-800 group-hover:text-blue-600 dark:text-slate-200 dark:group-hover:text-blue-400">
-                          {item.titleZh}
-                        </span>
-                      </div>
-                      <span className="shrink-0 font-mono text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
-                        {item.score.toFixed(1)}
-                      </span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              {/* 模块 2：细分赛道标签云 */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  🏷️ 热门搞钱切口（点击即筛）
-                </h2>
-                <div className="flex flex-wrap gap-1.5">
-                  {tagCounts.map(([tag, count]) => {
-                    const selected = activeTag === tag;
+                <div className="space-y-1.5">
+                  {topThreeItems.map((item, idx) => {
+                    const pMeta = PLATFORM_META[item.sourcePlatform];
+                    const isFocused = highlightedId === item.id;
                     return (
                       <button
-                        key={tag}
+                        key={item.id}
                         type="button"
-                        onClick={() => handleSelectTag(tag)}
+                        onClick={() => handleFocusTopItem(item)}
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                          selected
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                          "group flex w-full items-start justify-between gap-2.5 rounded-lg p-1.5 text-left transition-colors cursor-pointer",
+                          isFocused
+                            ? "bg-blue-50/90 dark:bg-blue-950/40"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
                         )}
                       >
-                        <span>{tag}</span>
-                        <span className="font-mono text-[10px] opacity-70">
-                          {count}
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            0{idx + 1}
+                          </span>
+                          <div>
+                            <span className="line-clamp-2 text-xs font-medium leading-snug text-slate-800 group-hover:text-blue-600 dark:text-slate-200 dark:group-hover:text-blue-400">
+                              {item.titleZh}
+                            </span>
+                            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                              {pMeta && (
+                                <span className="inline-flex items-center gap-1">
+                                  <span
+                                    className={cn(
+                                      "h-1.5 w-1.5 rounded-full",
+                                      pMeta.dotClass
+                                    )}
+                                  />
+                                  {pMeta.label}
+                                </span>
+                              )}
+                              <span>·</span>
+                              <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                                {item.metricsBadge}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="shrink-0 font-mono text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+                          {item.score.toFixed(1)}
                         </span>
                       </button>
                     );
@@ -496,9 +786,9 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 </div>
               </div>
 
-              {/* 模块 3：出海建站免费工具箱（Affiliate 变现预留位） */}
+              {/* 模块 2：出海建站免费工具箱（Affiliate 变现预留位） */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-2.5 flex items-center justify-between">
                   <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <Wrench className="h-3.5 w-3.5" />
                     出海建站零成本工具箱
@@ -507,14 +797,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     精选免费层
                   </span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {tools.map((tool) => (
                     <a
                       key={tool.name}
                       href={tool.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-start justify-between gap-2 rounded-lg border border-transparent p-2 transition-all hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-800 dark:hover:bg-slate-800/50"
+                      className="group flex items-start justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 transition-all hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-800 dark:hover:bg-slate-800/50"
                     >
                       <div>
                         <div className="flex items-center gap-1.5">
@@ -525,7 +815,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                             {tool.freeTierNote}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-[11.5px] text-slate-500 dark:text-slate-400">
+                        <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500 dark:text-slate-400">
                           {tool.tagline}
                         </p>
                       </div>
@@ -535,13 +825,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 </div>
               </div>
 
-              {/* 模块 4：每日早报邮件订阅预留位 */}
+              {/* 模块 3：每日早报邮件订阅预留位 */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
                 <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
                   <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                   订阅每日 5 分钟出海搞钱早报
                 </h2>
-                <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mb-2.5 text-xs text-slate-500 dark:text-slate-400">
                   每天早 8 点推送当日 Top 5 验证过的海外新产品与 MRR 案例。
                 </p>
                 {subscribed ? (

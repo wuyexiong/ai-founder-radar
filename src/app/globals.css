@@ -47,3 +47,23 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* 桌面端侧栏与抽屉极细滚动条 */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+.dark .thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.55);
+}

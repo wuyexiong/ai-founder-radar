@@ -4,13 +4,12 @@ import { Bookmark, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SignalCategory, SignalItem, SourcePlatform } from "@/types/signal";
 
-const PLATFORM_META: Record<
+export const PLATFORM_META: Record<
   SourcePlatform,
   { label: string; dotClass: string }
 > = {
   producthunt: { label: "Product Hunt", dotClass: "bg-orange-500" },
   hackernews: { label: "Hacker News", dotClass: "bg-amber-500" },
-  reddit: { label: "Reddit", dotClass: "bg-rose-500" },
   indiehackers: {
     label: "Indie Hackers",
     dotClass: "bg-sky-600 dark:bg-sky-400",
@@ -19,6 +18,7 @@ const PLATFORM_META: Record<
     label: "Acquire.com",
     dotClass: "bg-teal-600 dark:bg-teal-400",
   },
+  reddit: { label: "Reddit", dotClass: "bg-rose-500" },
   github: { label: "GitHub", dotClass: "bg-slate-700 dark:bg-slate-300" },
   trustmrr: { label: "TrustMRR", dotClass: "bg-emerald-500" },
   appstore: { label: "App Store", dotClass: "bg-blue-500" },
@@ -49,17 +49,17 @@ const CATEGORY_META: Record<
 interface SignalCardProps {
   item: SignalItem;
   isBookmarked: boolean;
+  isHighlighted?: boolean;
   activeTag: string | null;
   onToggleBookmark: (id: string) => void;
-  onSelectTag: (tag: string) => void;
 }
 
 export function SignalCard({
   item,
   isBookmarked,
+  isHighlighted = false,
   activeTag,
   onToggleBookmark,
-  onSelectTag,
 }: SignalCardProps) {
   const platform = PLATFORM_META[item.sourcePlatform] ?? {
     label: item.sourcePlatform,
@@ -83,9 +83,14 @@ export function SignalCard({
   return (
     <article
       id={item.id}
-      className="group rounded-xl border border-slate-200/90 bg-white p-5 transition-all duration-150 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-[#111827] dark:hover:border-slate-700"
+      className={cn(
+        "group scroll-mt-28 rounded-xl border bg-white p-5 transition-all duration-300 dark:bg-[#111827]",
+        isHighlighted
+          ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md dark:border-blue-400 dark:ring-blue-400/30"
+          : "border-slate-200/90 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-slate-700"
+      )}
     >
-      {/* 第 1 层：顶栏元数据 */}
+      {/* 第 1 层：顶栏元数据（纯静态展示，避免阅读途中误触跳动） */}
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
@@ -171,25 +176,23 @@ export function SignalCard({
         </div>
       </div>
 
-      {/* 第 4 层：底栏标签与操作行 */}
+      {/* 第 4 层：底栏静态语义标签与操作行 */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
           {item.tags.map((tag) => {
             const selected = activeTag === tag;
             return (
-              <button
+              <span
                 key={tag}
-                type="button"
-                onClick={() => onSelectTag(tag)}
                 className={cn(
-                  "rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer",
+                  "select-none rounded-md px-2 py-0.5 text-xs font-medium",
                   selected
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                    ? "border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                 )}
               >
                 {tag}
-              </button>
+              </span>
             );
           })}
         </div>
