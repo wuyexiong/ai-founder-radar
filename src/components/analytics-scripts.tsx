@@ -1,6 +1,7 @@
 import Script from "next/script";
 
 export function AnalyticsScripts() {
+  const isVercel = process.env.VERCEL === "1";
   const gaId = process.env.NEXT_PUBLIC_GA_ID?.trim();
   const clarityId = process.env.NEXT_PUBLIC_CLARITY_ID?.trim();
   const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim();
@@ -9,6 +10,13 @@ export function AnalyticsScripts() {
 
   return (
     <>
+      {isVercel && (
+        <Script
+          id="vercel-analytics"
+          src="/_vercel/insights/script.js"
+          strategy="afterInteractive"
+        />
+      )}
       {gaId && (
         <>
           <Script

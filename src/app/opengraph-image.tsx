@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const alt =
-  "IndieRadar — Daily Micro-SaaS Launches, Verified MRR & Pain Point Signals";
+  "AI Founder Radar — Daily Micro-SaaS Launches, Verified MRR & Pain Point Signals";
 export const size = {
   width: 1200,
   height: 630,
@@ -42,12 +42,12 @@ export default function OpenGraphImage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "24px",
+                fontSize: "20px",
                 fontWeight: 800,
                 color: "#FFFFFF",
               }}
             >
-              IR
+              AFR
             </div>
             <span
               style={{
@@ -56,7 +56,7 @@ export default function OpenGraphImage() {
                 letterSpacing: "-0.02em",
               }}
             >
-              IndieRadar
+              AI Founder Radar
             </span>
           </div>
 

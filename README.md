@@ -1,4 +1,4 @@
-# IndieRadar — Global Micro-SaaS, AI & Indie Hacker Signal Radar
+# AI Founder Radar — Global AI Startup, Micro-SaaS & MRR Signal Radar
 
 Daily 5-minute intelligence on Micro-SaaS launches, verified MRR case studies, and high-intent user pain points — distilled into structured Founder Playbooks in **English (`en`)**, **Simplified Chinese (`zh`)**, **Traditional Chinese (`zh-TW`)**, and **Japanese (`ja`)**.
 

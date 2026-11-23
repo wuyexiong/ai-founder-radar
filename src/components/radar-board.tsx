@@ -363,7 +363,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-base font-bold tracking-tight">
-                IndieRadar
+                AI Founder Radar
               </span>
               <span className="hidden text-xs font-medium text-slate-500 lg:inline dark:text-slate-400">
                 {dict.header.tagline}

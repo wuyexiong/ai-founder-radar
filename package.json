@@ -1,8 +1,8 @@
 {
-  "name": "indie-radar-wyx",
+  "name": "ai-founder-radar",
   "version": "0.1.0",
   "private": true,
-  "description": "IndieRadar — 出海搞钱与产品灵感雷达 (Next.js + Tailwind + Drizzle + Supabase)",
+  "description": "AI Founder Radar — 每日 10 分钟全球 AI 创业、新品与真实变现雷达 (Next.js + Tailwind + Drizzle + Supabase)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

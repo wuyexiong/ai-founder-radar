@@ -75,13 +75,13 @@ export interface Dictionary {
 const EN_DICT: Dictionary = {
   meta: {
     siteTitle:
-      "IndieRadar — Daily Indie Hacker MRR, Micro-SaaS Launches & Pain Points",
+      "AI Founder Radar — Daily Indie Hacker MRR, Micro-SaaS Launches & Pain Points",
     siteDescription:
       "5-minute daily commercial signals from Product Hunt, Show HN, Indie Hackers, Acquire & Reddit — distilled into What It Is, Monetization, and Replicable Indie Playbooks.",
     dailyTitle: (date, topTitle, count) =>
       topTitle
-        ? `${date} Indie SaaS & MRR Signals (${count ?? 0}): ${topTitle} | IndieRadar`
-        : `${date} Daily Micro-SaaS Launches, MRR & Pain Points | IndieRadar`,
+        ? `${date} Indie SaaS & MRR Signals (${count ?? 0}): ${topTitle} | AI Founder Radar`
+        : `${date} Daily Micro-SaaS Launches, MRR & Pain Points | AI Founder Radar`,
     dailyDescription: (date, summary, count) =>
       `${date} Briefing (${count} curated signals): ${summary}`,
   },
@@ -97,7 +97,7 @@ const EN_DICT: Dictionary = {
   },
   overview: {
     headingSrOnly: (date) =>
-      `IndieRadar — ${date} Global Micro-SaaS, AI & Indie Hacker Commercial Signals`,
+      `AI Founder Radar — ${date} Global Micro-SaaS, AI & Indie Hacker Commercial Signals`,
     scannedSummary: (scanned, selected) =>
       `Scanned ${scanned} raw posts · Curated ${selected} high-signal cards`,
     estReadTime: (mins) => `~${mins} min read`,
@@ -192,20 +192,20 @@ const EN_DICT: Dictionary = {
   },
   footer: {
     copyright:
-      "IndieRadar · High-Signal Micro-SaaS, AI & Indie Hacker Revenue Intelligence · Powered by Next.js + Drizzle + Supabase",
+      "AI Founder Radar · High-Signal Micro-SaaS, AI & Indie Hacker Revenue Intelligence · Powered by Next.js + Drizzle + Supabase",
   },
 };
 
 const ZH_DICT: Dictionary = {
   meta: {
     siteTitle:
-      "IndieRadar — 出海搞钱与产品灵感雷达 | 每日 5 分钟全球 AI & SaaS 商业信号",
+      "AI Founder Radar — 出海搞钱与产品灵感雷达 | 每日 5 分钟全球 AI & SaaS 商业信号",
     siteDescription:
       "每日自动扫描 Product Hunt、Reddit 独立开发版块、Show HN 与真实 MRR 榜单，提炼『它是什么、怎么赚钱、如何抄作业』的高信噪比中文商业卡片。",
     dailyTitle: (date, topTitle, count) =>
       topTitle
-        ? `${date} 出海商业信号精选（${count ?? 0} 条）：${topTitle} | IndieRadar`
-        : `${date} 全球 AI 与独立开发搞钱灵感日报 | IndieRadar`,
+        ? `${date} 出海商业信号精选（${count ?? 0} 条）：${topTitle} | AI Founder Radar`
+        : `${date} 全球 AI 与独立开发搞钱灵感日报 | AI Founder Radar`,
     dailyDescription: (date, summary, count) =>
       `${date} 精选 ${count} 条海外一手商业信号：${summary}`,
   },
@@ -221,7 +221,7 @@ const ZH_DICT: Dictionary = {
   },
   overview: {
     headingSrOnly: (date) =>
-      `IndieRadar — ${date} 全球出海、Micro-SaaS 与独立开发商业信号看板`,
+      `AI Founder Radar — ${date} 全球出海、Micro-SaaS 与独立开发商业信号看板`,
     scannedSummary: (scanned, selected) =>
       `已扫描 ${scanned} 条海外一手信号 · 精选 ${selected} 条商业卡片`,
     estReadTime: (mins) => `预计 ${mins} 分钟刷完`,
@@ -315,20 +315,20 @@ const ZH_DICT: Dictionary = {
   },
   footer: {
     copyright:
-      "IndieRadar · 专注全球出海、AI、Micro-SaaS 与独立开发真实变现信号 · Powered by Next.js + Drizzle + Supabase",
+      "AI Founder Radar · 专注全球出海、AI、Micro-SaaS 与独立开发真实变现信号 · Powered by Next.js + Drizzle + Supabase",
   },
 };
 
 const ZH_TW_DICT: Dictionary = {
   meta: {
     siteTitle:
-      "IndieRadar — 出海搞錢與產品靈感雷達 | 每日 5 分鐘全球 AI & SaaS 商業信號",
+      "AI Founder Radar — 出海搞錢與產品靈感雷達 | 每日 5 分鐘全球 AI & SaaS 商業信號",
     siteDescription:
       "每日自動掃描 Product Hunt、Reddit 獨立開發版塊、Show HN 與真實 MRR 榜單，提煉『它是什麼、怎麼賺錢、如何抄作業』的高信噪比繁體商業卡片。",
     dailyTitle: (date, topTitle, count) =>
       topTitle
-        ? `${date} 出海商業信號精選（${count ?? 0} 則）：${topTitle} | IndieRadar`
-        : `${date} 全球 AI 與獨立開發變現靈感日報 | IndieRadar`,
+        ? `${date} 出海商業信號精選（${count ?? 0} 則）：${topTitle} | AI Founder Radar`
+        : `${date} 全球 AI 與獨立開發變現靈感日報 | AI Founder Radar`,
     dailyDescription: (date, summary, count) =>
       `${date} 精選 ${count} 則海外一手商業信號：${summary}`,
   },
@@ -344,7 +344,7 @@ const ZH_TW_DICT: Dictionary = {
   },
   overview: {
     headingSrOnly: (date) =>
-      `IndieRadar — ${date} 全球出海、Micro-SaaS 與獨立開發商業信號看板`,
+      `AI Founder Radar — ${date} 全球出海、Micro-SaaS 與獨立開發商業信號看板`,
     scannedSummary: (scanned, selected) =>
       `已掃描 ${scanned} 則海外一手信號 · 精選 ${selected} 則商業卡片`,
     estReadTime: (mins) => `預計 ${mins} 分鐘讀完`,
@@ -438,20 +438,20 @@ const ZH_TW_DICT: Dictionary = {
   },
   footer: {
     copyright:
-      "IndieRadar · 專注全球出海、AI、Micro-SaaS 與獨立開發真實變現信號 · Powered by Next.js + Drizzle + Supabase",
+      "AI Founder Radar · 專注全球出海、AI、Micro-SaaS 與獨立開發真實變現信號 · Powered by Next.js + Drizzle + Supabase",
   },
 };
 
 const JA_DICT: Dictionary = {
   meta: {
     siteTitle:
-      "IndieRadar — 毎日5分で世界の個人開発・Micro-SaaS収益事例＆課題を発掘",
+      "AI Founder Radar — 毎日5分で世界の個人開発・Micro-SaaS収益事例＆課題を発掘",
     siteDescription:
       "Product Hunt、Show HN、Indie Hackers、Redditから厳選した海外SaaS・AIプロダクトの最新トレンド、リアルなMRR収益データ、ユーザーの不満・ニーズを日本語で構造化要約。",
     dailyTitle: (date, topTitle, count) =>
       topTitle
-        ? `${date} 海外個人開発・SaaS収益シグナル（${count ?? 0}件）：${topTitle} | IndieRadar`
-        : `${date} 海外Micro-SaaS・MRR事例＆課題ダイジェスト | IndieRadar`,
+        ? `${date} 海外個人開発・SaaS収益シグナル（${count ?? 0}件）：${topTitle} | AI Founder Radar`
+        : `${date} 海外Micro-SaaS・MRR事例＆課題ダイジェスト | AI Founder Radar`,
     dailyDescription: (date, summary, count) =>
       `${date} 厳選ビジネスシグナル（${count}件）：${summary}`,
   },
@@ -467,7 +467,7 @@ const JA_DICT: Dictionary = {
   },
   overview: {
     headingSrOnly: (date) =>
-      `IndieRadar — ${date} 海外Micro-SaaS・AI・個人開発ビジネスシグナル一覧`,
+      `AI Founder Radar — ${date} 海外Micro-SaaS・AI・個人開発ビジネスシグナル一覧`,
     scannedSummary: (scanned, selected) =>
       `海外一次情報 ${scanned} 件をスキャン · ${selected} 件の厳選ビジネスカード`,
     estReadTime: (mins) => `約 ${mins} 分で読了`,
@@ -562,7 +562,7 @@ const JA_DICT: Dictionary = {
   },
   footer: {
     copyright:
-      "IndieRadar · 世界のMicro-SaaS・AI・個人開発のリアルな収益シグナルを厳選 · Powered by Next.js + Drizzle + Supabase",
+      "AI Founder Radar · 世界のMicro-SaaS・AI・個人開発のリアルな収益シグナルを厳選 · Powered by Next.js + Drizzle + Supabase",
   },
 };
 

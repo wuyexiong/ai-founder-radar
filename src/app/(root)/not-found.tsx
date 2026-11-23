@@ -10,7 +10,7 @@ export default function NotFound() {
         Signal Archive Not Found
       </h1>
       <p className="mt-1.5 max-w-md text-xs text-slate-500 dark:text-slate-400">
-        The requested date or page does not exist in IndieRadar yet.
+        The requested date or page does not exist in AI Founder Radar yet.
       </p>
       <Link
         href="/en"

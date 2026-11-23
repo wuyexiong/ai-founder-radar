@@ -1,4 +1,4 @@
-name: Daily IndieRadar Sync
+name: Daily AI Founder Radar Sync
 
 on:
   schedule:
