@@ -24,6 +24,10 @@ export function getScannedCandidatesCount(): number {
   return scannedRawCandidates;
 }
 
+export function addScannedCountFromExternal(n: number): void {
+  if (n > 0) scannedRawCandidates += n;
+}
+
 function addScannedCount(n: number): void {
   if (n > 0) scannedRawCandidates += n;
 }

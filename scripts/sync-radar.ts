@@ -11,6 +11,11 @@ import {
   translateExistingSignalRow,
 } from "../src/lib/ai-distiller";
 import {
+  fetchAppStoreTopGrossing,
+  fetchGitHubTrending,
+  fetchTrustMrr,
+} from "../src/lib/collectors/extra-sources";
+import {
   fetchAcquireListings,
   fetchHackerNewsShowHN,
   fetchIndieHackers,
@@ -316,11 +321,23 @@ async function main() {
 
   resetScannedCandidatesCount();
 
-  const [phItems, hnItems, ihItems, acqItems, redditItems] = await Promise.all([
+  const [
+    phItems,
+    hnItems,
+    ihItems,
+    acqItems,
+    trustItems,
+    appStoreItems,
+    githubItems,
+    redditItems,
+  ] = await Promise.all([
     fetchProductHuntFeed(4, historicalUrls),
     fetchHackerNewsShowHN(4, historicalUrls),
     fetchIndieHackers(4, historicalUrls),
-    fetchAcquireListings(3, historicalUrls),
+    fetchAcquireListings(4, historicalUrls),
+    fetchTrustMrr(10, historicalUrls),
+    fetchAppStoreTopGrossing(10, historicalUrls),
+    fetchGitHubTrending(10, 4, historicalUrls),
     fetchRedditSubreddits(
       ["SaaS", "microsaas", "SomebodyMakeThis"],
       2,
@@ -333,6 +350,9 @@ async function main() {
     ...hnItems,
     ...ihItems,
     ...acquireOrEmpty(acqItems),
+    ...trustItems,
+    ...appStoreItems,
+    ...githubItems,
     ...redditItems,
   ];
   const rawScannedTotal = Math.max(getScannedCandidatesCount(), allRaw.length);
@@ -340,7 +360,8 @@ async function main() {
   console.log(
     `📡 已扫描 ${rawScannedTotal} 条海外一手动态，初筛命中 ${allRaw.length} 条 ` +
       `(PH: ${phItems.length}, ShowHN: ${hnItems.length}, IH: ${ihItems.length}, ` +
-      `Acquire: ${acqItems.length}, Reddit: ${redditItems.length})`
+      `Acquire: ${acqItems.length}, TrustMRR: ${trustItems.length}, ` +
+      `AppStore: ${appStoreItems.length}, GitHub: ${githubItems.length}, Reddit: ${redditItems.length})`
   );
 
   const uniqueMap = new Map<string, (typeof allRaw)[number]>();
@@ -350,7 +371,7 @@ async function main() {
     }
   }
 
-  const deduped = Array.from(uniqueMap.values()).slice(0, 22);
+  const deduped = Array.from(uniqueMap.values()).slice(0, 65);
   const newlyDistilled: SignalItem[] = [];
   let llmCallIndex = 0;
 
