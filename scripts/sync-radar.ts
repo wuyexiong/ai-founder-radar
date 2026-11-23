@@ -10,6 +10,7 @@ import {
   generateDailyEditorialSummary,
   translateExistingSignalRow,
 } from "../src/lib/ai-distiller";
+import { sendDailyNewsletterDigests } from "../src/lib/newsletter";
 import {
   fetchAppStoreTopGrossing,
   fetchGitHubTrending,
@@ -503,6 +504,18 @@ async function main() {
     console.log(
       `✅ 已成功同步至 Supabase PostgreSQL！（今日累计精选 ${todayAllItems.length} 条，本次新增 ${newlyDistilled.length} 条，四语种齐全）`
     );
+
+    // 每日早报邮件推送（配置 RESEND_API_KEY 后自动生效，按订阅者语言发送 Top 5）
+    await sendDailyNewsletterDigests({
+      db,
+      dateKey: today,
+      allItems: todayAllItems,
+      summaryNote,
+      summaryTranslations,
+    });
+
+    // 自动向 IndexNow (Bing / Yandex / Naver / Seznam) 主动推送今日四语种新链接加速收录
+    await pingIndexNow(today);
   } else {
     console.log(
       `ℹ️ 当前未配置 DATABASE_URL，本次抓取已完成验证（新增四语种提炼 ${newlyDistilled.length} 条）。`
@@ -510,6 +523,45 @@ async function main() {
   }
 
   process.exit(0);
+}
+
+const INDEXNOW_KEY = "8f4c2e91b7d34a60c5e81239fa047b6d";
+
+async function pingIndexNow(dateKey: string) {
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://radar.aibuildon.com"
+  ).replace(/\/$/, "");
+
+  try {
+    const host = new URL(siteUrl).hostname;
+    if (host === "localhost" || host.endsWith(".vercel.app")) return;
+
+    const locales = ["en", "zh", "zh-TW", "ja"];
+    const urlList = [
+      ...locales.map((loc) => `${siteUrl}/${loc}`),
+      ...locales.map((loc) => `${siteUrl}/${loc}/daily/${dateKey}`),
+    ];
+
+    const res = await fetch("https://api.indexnow.org/indexnow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        host,
+        key: INDEXNOW_KEY,
+        keyLocation: `${siteUrl}/${INDEXNOW_KEY}.txt`,
+        urlList,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (res.ok || res.status === 202) {
+      console.log(
+        `🔍 已通过 IndexNow 自动向 Bing 等搜索引擎推送 ${urlList.length} 条最新多语种 URL！`
+      );
+    }
+  } catch {
+    // IndexNow 推送失败不影响主流程
+  }
 }
 
 function acquireOrEmpty<T>(arr: T[]): T[] {

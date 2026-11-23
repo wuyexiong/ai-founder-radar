@@ -56,3 +56,22 @@ export const dailyStats = pgTable("daily_stats", {
     .default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }).enableRLS();
+
+export const newsletterSubscribers = pgTable(
+  "newsletter_subscribers",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    locale: text("locale").notNull().default("en"), // en | zh | zh-TW | ja
+    status: text("status").notNull().default("active"), // active | unsubscribed
+    unsubscribeToken: text("unsubscribe_token").notNull(),
+    lastSentDate: text("last_sent_date"), // YYYY-MM-DD 幂等防重发标记
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("newsletter_subscribers_email_idx").on(table.email),
+    uniqueIndex("newsletter_subscribers_token_idx").on(table.unsubscribeToken),
+    index("newsletter_subscribers_status_idx").on(table.status),
+  ]
+).enableRLS();

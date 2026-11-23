@@ -121,8 +121,6 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [isDark, setIsDark] = useState(false);
-  const [emailInput, setEmailInput] = useState("");
-  const [subscribed, setSubscribed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -923,44 +921,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 </div>
               </div>
 
-              {/* 模块 3：每日早报邮件订阅预留位 */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
-                <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
-                  <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                  {dict.sidebar.newsletterTitle}
-                </h2>
-                <p className="mb-2.5 text-xs text-slate-500 dark:text-slate-400">
-                  {dict.sidebar.newsletterDesc}
-                </p>
-                {subscribed ? (
-                  <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                    {dict.sidebar.newsletterSuccess}
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (emailInput.trim()) setSubscribed(true);
-                    }}
-                    className="flex gap-1.5"
-                  >
-                    <input
-                      type="email"
-                      required
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      placeholder="you@example.com"
-                      className="h-8 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900"
-                    />
-                    <button
-                      type="submit"
-                      className="h-8 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
-                    >
-                      {dict.sidebar.newsletterCta}
-                    </button>
-                  </form>
-                )}
-              </div>
+              {/* 模块 3：每日早报邮件订阅（真实存库 + 自动推送） */}
+              <NewsletterSubscribeCard dict={dict.sidebar} locale={locale} />
             </div>
           </aside>
         </div>
@@ -970,6 +932,111 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           {dict.footer.copyright}
         </footer>
       </main>
+    </div>
+  );
+}
+
+function NewsletterSubscribeCard({
+  dict,
+  locale,
+}: {
+  dict: ReturnType<typeof getDictionary>["sidebar"];
+  locale: Locale;
+}) {
+  const [emailInput, setEmailInput] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  const [status, setStatus] = useState<
+    "idle" | "submitting" | "subscribed" | "already" | "error"
+  >("idle");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = emailInput.trim();
+    if (!trimmed || status === "submitting") return;
+
+    setStatus("submitting");
+    try {
+      const res = await fetch("/api/newsletter/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmed,
+          locale,
+          website: honeypot,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        status?: string;
+      } | null;
+
+      if (res.ok && data?.ok) {
+        setStatus(data.status === "already_subscribed" ? "already" : "subscribed");
+        setEmailInput("");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
+      <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+        <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+        {dict.newsletterTitle}
+      </h2>
+      <p className="mb-2.5 text-xs text-slate-500 dark:text-slate-400">
+        {dict.newsletterDesc}
+      </p>
+      {status === "subscribed" || status === "already" ? (
+        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+          {status === "already" ? dict.newsletterAlready : dict.newsletterSuccess}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-1.5">
+          {/* 防刷蜜罐输入框（屏幕阅读器与视觉均隐藏） */}
+          <input
+            type="text"
+            name="website"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            className="hidden"
+          />
+          <div className="flex gap-1.5">
+            <input
+              type="email"
+              required
+              disabled={status === "submitting"}
+              value={emailInput}
+              onChange={(e) => {
+                setEmailInput(e.target.value);
+                if (status === "error") setStatus("idle");
+              }}
+              placeholder="you@example.com"
+              className="h-8 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+            />
+            <button
+              type="submit"
+              disabled={status === "submitting"}
+              className="h-8 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+            >
+              {status === "submitting"
+                ? dict.newsletterSubmitting
+                : dict.newsletterCta}
+            </button>
+          </div>
+          {status === "error" && (
+            <p className="text-[11px] text-rose-600 dark:text-rose-400">
+              {dict.newsletterError}
+            </p>
+          )}
+        </form>
+      )}
     </div>
   );
 }

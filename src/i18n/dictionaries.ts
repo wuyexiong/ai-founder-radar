@@ -65,6 +65,9 @@ export interface Dictionary {
     newsletterTitle: string;
     newsletterDesc: string;
     newsletterSuccess: string;
+    newsletterAlready: string;
+    newsletterSubmitting: string;
+    newsletterError: string;
     newsletterCta: string;
   };
   footer: {
@@ -187,7 +190,10 @@ const EN_DICT: Dictionary = {
     newsletterTitle: "5-Minute Daily Indie Digest",
     newsletterDesc:
       "Get the top 5 verified Micro-SaaS launches & MRR breakdowns in your inbox at 8 AM.",
-    newsletterSuccess: "✓ Subscribed for preview (Resend delivery coming soon)",
+    newsletterSuccess: "✓ Subscribed! You're on the daily 8 AM founder list.",
+    newsletterAlready: "✓ Already subscribed — language preference updated.",
+    newsletterSubmitting: "Saving...",
+    newsletterError: "Subscription failed. Please check your email and retry.",
     newsletterCta: "Subscribe",
   },
   footer: {
@@ -310,7 +316,10 @@ const ZH_DICT: Dictionary = {
     ],
     newsletterTitle: "订阅每日 5 分钟出海搞钱早报",
     newsletterDesc: "每天早 8 点推送当日 Top 5 验证过的海外新产品与 MRR 案例。",
-    newsletterSuccess: "✓ 已记录邮箱预览（阶段 3 接入 Resend 后自动发信）",
+    newsletterSuccess: "✓ 订阅成功！你的邮箱已加入每日早 8 点精选推送名单。",
+    newsletterAlready: "✓ 该邮箱已在订阅名单中，已同步当前语言偏好。",
+    newsletterSubmitting: "提交中...",
+    newsletterError: "订阅失败，请检查邮箱格式或稍后重试。",
     newsletterCta: "免费订阅",
   },
   footer: {
@@ -433,7 +442,10 @@ const ZH_TW_DICT: Dictionary = {
     ],
     newsletterTitle: "訂閱每日 5 分鐘出海變現早報",
     newsletterDesc: "每天早上 8 點推送當日 Top 5 驗證過的海外新產品與 MRR 案例。",
-    newsletterSuccess: "✓ 已記錄信箱預覽（階段 3 串接 Resend 後自動發信）",
+    newsletterSuccess: "✓ 訂閱成功！你的信箱已加入每日早 8 點精選推送名單。",
+    newsletterAlready: "✓ 此信箱已在訂閱名單中，已同步目前語言偏好。",
+    newsletterSubmitting: "送出中...",
+    newsletterError: "訂閱失敗，請檢查信箱格式或稍後再試。",
     newsletterCta: "免費訂閱",
   },
   footer: {
@@ -557,7 +569,10 @@ const JA_DICT: Dictionary = {
     newsletterTitle: "毎日5分の海外個人開発メルマガ",
     newsletterDesc:
       "毎朝8時に厳選された海外Micro-SaaS事例＆MRRデータを5件お届けします。",
-    newsletterSuccess: "✓ プレビュー登録完了（Resend連携後に配信開始）",
+    newsletterSuccess: "✓ 購読登録が完了しました！毎朝8時の配信リストに追加されました。",
+    newsletterAlready: "✓ すでに登録済みです（言語設定を更新しました）。",
+    newsletterSubmitting: "送信中...",
+    newsletterError: "登録に失敗しました。メールアドレスをご確認の上、再試行してください。",
     newsletterCta: "無料購読",
   },
   footer: {
