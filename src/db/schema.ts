@@ -42,7 +42,7 @@ export const signalItems = pgTable(
     index("signal_items_date_key_idx").on(table.dateKey),
     index("signal_items_category_idx").on(table.category),
   ]
-);
+).enableRLS();
 
 export const dailyStats = pgTable("daily_stats", {
   dateKey: text("date_key").primaryKey(),
@@ -55,4 +55,4 @@ export const dailyStats = pgTable("daily_stats", {
     .notNull()
     .default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}).enableRLS();

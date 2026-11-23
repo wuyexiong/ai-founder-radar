@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   detectPreferredLocale,
+  isPlausibleArchiveDate,
   isValidLocale,
   LOCALE_COOKIE,
 } from "@/i18n/config";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
@@ -32,7 +31,7 @@ export function middleware(request: NextRequest) {
     );
     const legacyDate = searchParams.get("date");
     const targetPath =
-      legacyDate && DATE_RE.test(legacyDate)
+      legacyDate && isPlausibleArchiveDate(legacyDate)
         ? `/${preferred}/daily/${legacyDate}`
         : `/${preferred}`;
 
@@ -61,7 +60,7 @@ export function middleware(request: NextRequest) {
   // 3. 兼容 /[locale]?date=YYYY-MM-DD 跳转至独立静态归档路由
   if (isValidLocale(firstSegment)) {
     const legacyDate = searchParams.get("date");
-    if (segments.length === 1 && legacyDate && DATE_RE.test(legacyDate)) {
+    if (segments.length === 1 && legacyDate && isPlausibleArchiveDate(legacyDate)) {
       const url = request.nextUrl.clone();
       url.pathname = `/${firstSegment}/daily/${legacyDate}`;
       url.searchParams.delete("date");

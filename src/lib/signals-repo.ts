@@ -241,9 +241,16 @@ export async function getRadarPayload(
         };
       }
     } catch (error) {
+      const safeMsg =
+        error instanceof Error
+          ? error.message.replace(
+              /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
+              "$1***@"
+            )
+          : "Database query error";
       console.warn(
         "[IndieRadar] Supabase query failed, falling back to local dataset:",
-        error
+        safeMsg
       );
     }
   }

@@ -7,6 +7,7 @@ import {
   type Locale,
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { toSafeHttpUrl } from "@/lib/utils";
 import type { DailyOverview, SignalItem } from "@/types/signal";
 
 interface BuildSeoParams {
@@ -131,13 +132,16 @@ export function buildRadarJsonLd({
         mainEntity: {
           "@type": "ItemList",
           numberOfItems: items.length,
-          itemListElement: items.map((item, idx) => ({
-            "@type": "ListItem",
-            position: idx + 1,
-            name: item.title,
-            description: `${item.whatItIs} ${item.businessSignal}`,
-            url: item.sourceUrl,
-          })),
+          itemListElement: items.map((item, idx) => {
+            const safeUrl = toSafeHttpUrl(item.sourceUrl);
+            return {
+              "@type": "ListItem",
+              position: idx + 1,
+              name: item.title,
+              description: `${item.whatItIs} ${item.businessSignal}`,
+              url: safeUrl === "#" ? pageUrl : safeUrl,
+            };
+          }),
         },
       },
     ],

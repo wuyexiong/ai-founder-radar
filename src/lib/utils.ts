@@ -5,6 +5,29 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function isSafeHttpUrl(raw: string | undefined | null): boolean {
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+export function toSafeHttpUrl(raw: string | undefined | null): string {
+  if (!raw) return "#";
+  try {
+    const parsed = new URL(raw.trim());
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      return parsed.toString();
+    }
+    return "#";
+  } catch {
+    return "#";
+  }
+}
+
 export function formatRelativeTime(iso: string): string {
   const target = new Date(iso).getTime();
   if (Number.isNaN(target)) return "";

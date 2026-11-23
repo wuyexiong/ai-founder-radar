@@ -63,14 +63,24 @@ if (
 
 config({ path: ".env.local" });
 
-async function ensureMultilingualColumns(
-  db: NonNullable<ReturnType<typeof getDb>>
-) {
-  await db.execute(
-    sql`ALTER TABLE signal_items ADD COLUMN IF NOT EXISTS translations jsonb NOT NULL DEFAULT '{}'::jsonb`
-  );
-  await db.execute(
-    sql`ALTER TABLE daily_stats ADD COLUMN IF NOT EXISTS summary_translations jsonb NOT NULL DEFAULT '{}'::jsonb`
+function redactUrlCredentials(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (u.username || u.password) {
+      u.username = "***";
+      u.password = "";
+    }
+    return u.toString();
+  } catch {
+    return raw.replace(/\/\/[^/@]+@/, "//***@");
+  }
+}
+
+function formatSafeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.replace(
+    /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
+    "$1***@"
   );
 }
 
@@ -238,10 +248,6 @@ async function main() {
 
   const db = hasDatabaseConfigured() ? getDb() : null;
 
-  if (db) {
-    await ensureMultilingualColumns(db);
-  }
-
   if (enrichLocal) {
     await enrichLocalDatasetFile();
   }
@@ -259,7 +265,9 @@ async function main() {
 
   console.log(
     `🚀 [IndieRadar] 开始同步 ${today} 海外商业信号（简/繁/英/日四语种）${
-      process.env.HTTPS_PROXY ? ` (代理: ${process.env.HTTPS_PROXY})` : ""
+      process.env.HTTPS_PROXY
+        ? ` (代理: ${redactUrlCredentials(process.env.HTTPS_PROXY)})`
+        : ""
     }...`
   );
 
@@ -268,10 +276,6 @@ async function main() {
 
   if (db) {
     try {
-      await db.execute(
-        sql`DELETE FROM signal_items WHERE business_signal LIKE '%自动生成深度%'`
-      );
-
       const recentRows = await db
         .select()
         .from(signalItems)
@@ -306,7 +310,7 @@ async function main() {
         }
       }
     } catch (err) {
-      console.warn("⚠️ 读取已存在 URL 缓存时跳过:", err);
+      console.warn("⚠️ 读取已存在 URL 缓存时跳过:", formatSafeError(err));
     }
   }
 
@@ -492,6 +496,6 @@ function acquireOrEmpty<T>(arr: T[]): T[] {
 }
 
 main().catch((err) => {
-  console.error("❌ 同步任务异常:", err);
+  console.error("❌ 同步任务异常:", formatSafeError(err));
   process.exit(1);
 });

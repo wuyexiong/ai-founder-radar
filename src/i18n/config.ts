@@ -92,6 +92,28 @@ export function buildLocalePath(
   return `/${locale}/daily/${dateKey}`;
 }
 
+const ARCHIVE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MIN_ARCHIVE_DATE = "2026-01-01";
+
+export function isPlausibleArchiveDate(
+  dateKey: string | undefined | null
+): dateKey is string {
+  if (!dateKey || !ARCHIVE_DATE_RE.test(dateKey)) return false;
+  if (dateKey < MIN_ARCHIVE_DATE) return false;
+
+  // 允许至多提前 36 小时（覆盖全球最东时区与 Asia/Shanghai 当日切换窗口）
+  const maxDate = new Date(Date.now() + 36 * 3600 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  if (dateKey > maxDate) return false;
+
+  const parsed = new Date(`${dateKey}T00:00:00Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === dateKey
+  );
+}
+
 export function getSiteUrl(): string {
   const raw =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||

@@ -35,7 +35,7 @@ import {
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { RadarPagePayload } from "@/lib/signals-repo";
-import { cn } from "@/lib/utils";
+import { cn, toSafeHttpUrl } from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -58,7 +58,11 @@ const PLATFORM_ORDER: SourcePlatform[] = [
 const COLLAPSED_TAG_LIMIT = 10;
 
 function persistLocaleCookie(nextLocale: Locale) {
-  document.cookie = `${LOCALE_COOKIE}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
+  const secureAttr =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+  document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax${secureAttr}`;
 }
 
 export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
@@ -519,20 +523,23 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "rounded px-2 py-0.5 text-[11px] font-medium",
-                storageMode === "supabase"
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-              )}
-            >
-              {storageMode === "supabase"
-                ? dict.overview.storageCloud
-                : dict.overview.storageLocal}
-            </span>
-          </div>
+          {(storageMode === "supabase" ||
+            process.env.NODE_ENV !== "production") && (
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "rounded px-2 py-0.5 text-[11px] font-medium",
+                  storageMode === "supabase"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                )}
+              >
+                {storageMode === "supabase"
+                  ? dict.overview.storageCloud
+                  : dict.overview.storageLocal}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -892,7 +899,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   {tools.map((tool) => (
                     <a
                       key={tool.name}
-                      href={tool.url}
+                      href={toSafeHttpUrl(tool.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group flex items-start justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 transition-all hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-800 dark:hover:bg-slate-800/50"

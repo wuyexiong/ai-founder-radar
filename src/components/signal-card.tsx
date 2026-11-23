@@ -3,7 +3,7 @@
 import { Bookmark, ExternalLink } from "lucide-react";
 import { HTML_LANG_MAP, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { cn } from "@/lib/utils";
+import { cn, toSafeHttpUrl } from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -84,6 +84,7 @@ export function SignalCard({
   const showOrigSubtitle =
     Boolean(item.titleOrig) &&
     item.titleOrig.trim().toLowerCase() !== item.title.trim().toLowerCase();
+  const safeSourceUrl = toSafeHttpUrl(item.sourceUrl);
 
   return (
     <article
@@ -137,7 +138,7 @@ export function SignalCard({
       <div className="mb-3.5">
         <h3 className="text-[16.5px] font-semibold leading-snug">
           <a
-            href={item.sourceUrl}
+            href={safeSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-50 dark:group-hover:text-blue-400"
@@ -224,7 +225,7 @@ export function SignalCard({
           </button>
 
           <a
-            href={item.sourceUrl}
+            href={safeSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:border-blue-500/50 dark:hover:text-blue-400"

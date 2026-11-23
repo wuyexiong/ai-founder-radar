@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { SourcePlatform } from "@/types/signal";
 
 export interface RawFetchedItem {
@@ -64,18 +65,156 @@ function decodeXmlEntities(str: string): string {
     .trim();
 }
 
+function isPrivateOrReservedIpv4Octets(a: number, b: number): boolean {
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isPrivateOrReservedIp(ip: string): boolean {
+  const normalized = ip.replace(/^\[|\]$/g, "").toLowerCase();
+
+  // WHATWG URL 会将 ::ffff:127.0.0.1 规范化为十六进制 ::ffff:7f00:1
+  const mappedHexMatch = normalized.match(
+    /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i
+  );
+  if (mappedHexMatch) {
+    const hi = Number.parseInt(mappedHexMatch[1], 16);
+    const a = (hi >> 8) & 0xff;
+    const b = hi & 0xff;
+    return isPrivateOrReservedIpv4Octets(a, b);
+  }
+
+  const mappedDottedMatch = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const candidate = mappedDottedMatch ? mappedDottedMatch[1] : normalized;
+
+  const version = isIP(candidate);
+  if (version === 4) {
+    const [a, b] = candidate.split(".").map(Number);
+    return isPrivateOrReservedIpv4Octets(a, b);
+  }
+
+  if (version === 6) {
+    if (candidate === "::" || candidate === "::1") return true;
+    if (candidate.startsWith("::ffff:")) return true;
+    if (/^f[cd]/i.test(candidate)) return true; // fc00::/7 Unique Local
+    if (/^fe[89ab]/i.test(candidate)) return true; // fe80::/10 Link-Local
+    if (/^ff/i.test(candidate)) return true; // Multicast
+    return false;
+  }
+
+  return false;
+}
+
+export function isSafePublicHttpUrl(rawUrl: string | undefined | null): boolean {
+  if (!rawUrl) return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return false;
+    }
+    if (parsed.username || parsed.password) {
+      return false;
+    }
+    const host = parsed.hostname
+      .replace(/^\[|\]$/g, "")
+      .replace(/\.$/, "")
+      .toLowerCase();
+    if (!host) return false;
+    if (
+      host === "localhost" ||
+      host.endsWith(".localhost") ||
+      host.endsWith(".local") ||
+      host.endsWith(".internal") ||
+      host === "metadata.google.internal" ||
+      host === "metadata"
+    ) {
+      return false;
+    }
+    if (isPrivateOrReservedIp(host)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readHtmlSnippetLimited(
+  res: Response,
+  maxBytes = 48_000
+): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  let totalBytes = 0;
+  let html = "";
+
+  try {
+    while (totalBytes < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      const remaining = maxBytes - totalBytes;
+      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      totalBytes += chunk.byteLength;
+      html += decoder.decode(chunk, { stream: totalBytes < maxBytes });
+      if (/<\s*\/\s*head\s*>/i.test(html)) {
+        break;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+
+  return html;
+}
+
 async function fetchPageMetaSnippet(
   url: string,
   timeoutMs = 3500
 ): Promise<{ title?: string; description?: string }> {
   try {
-    const res = await fetchWithTimeout(
-      url,
-      { headers: { Accept: "text/html,application/xhtml+xml" } },
-      timeoutMs
-    );
-    if (!res.ok) return {};
-    const html = (await res.text()).slice(0, 45000);
+    let currentUrl = url;
+    let res: Response | null = null;
+
+    // 手动校验最多 3 跳重定向目标，防止 302 跳转至 127.0.0.1 / 169.254.169.254 触发 SSRF
+    for (let hop = 0; hop <= 3; hop++) {
+      if (!isSafePublicHttpUrl(currentUrl)) return {};
+      res = await fetchWithTimeout(
+        currentUrl,
+        {
+          headers: { Accept: "text/html,application/xhtml+xml" },
+          redirect: "manual",
+        },
+        timeoutMs
+      );
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        await res.body?.cancel().catch(() => undefined);
+        if (!location || hop === 3) return {};
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+      break;
+    }
+
+    if (!res || !res.ok) return {};
+    const contentType = res.headers.get("content-type")?.toLowerCase() ?? "";
+    if (
+      contentType &&
+      !contentType.includes("text/html") &&
+      !contentType.includes("application/xhtml+xml")
+    ) {
+      await res.body?.cancel().catch(() => undefined);
+      return {};
+    }
+
+    const html = await readHtmlSnippetLimited(res, 48_000);
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const descMatch =
       html.match(
@@ -138,6 +277,7 @@ export async function fetchHackerNewsShowHN(
         .filter((h) => {
           if (!h.title) return false;
           const targetUrl = h.url || `https://news.ycombinator.com/item?id=${h.objectID}`;
+          if (!isSafePublicHttpUrl(targetUrl)) return false;
           if (excludeUrls?.has(targetUrl)) return false;
 
           const textBlob = `${h.title} ${h.story_text ?? ""} ${h.url ?? ""}`;
@@ -260,6 +400,7 @@ export async function fetchHackerNewsShowHN(
       .filter((s): s is NonNullable<typeof s> => {
         if (!s || !s.title || (s.score ?? 0) < 3) return false;
         const url = s.url || `https://news.ycombinator.com/item?id=${s.id}`;
+        if (!isSafePublicHttpUrl(url)) return false;
         if (excludeUrls?.has(url)) return false;
         return !HN_TOY_PATTERN.test(s.title) || HN_COMMERCIAL_PATTERN.test(s.title);
       })
@@ -303,7 +444,7 @@ export async function fetchProductHuntFeed(
       const linkMatch = entry.match(/<link[^>]*href="([^"]+)"/);
       const publishedMatch = entry.match(/<published>([\s\S]*?)<\/published>/);
       const url = linkMatch ? linkMatch[1].trim() : "";
-      if (!url || excludeUrls?.has(url)) continue;
+      if (!url || !isSafePublicHttpUrl(url) || excludeUrls?.has(url)) continue;
 
       parsed.push({
         title: titleMatch ? decodeXmlEntities(titleMatch[1]) : "Product Hunt Launch",
@@ -793,7 +934,7 @@ export async function fetchRedditSubreddits(
             const fullUrl = p.permalink
               ? `https://www.reddit.com${p.permalink}`
               : p.url || "";
-            if (!fullUrl || excludeUrls?.has(fullUrl)) return false;
+            if (!fullUrl || !isSafePublicHttpUrl(fullUrl) || excludeUrls?.has(fullUrl)) return false;
             return true;
           })
           .map((p) => {
@@ -869,7 +1010,7 @@ export async function fetchRedditSubreddits(
         };
         for (const hit of data.hits ?? []) {
           const url = hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`;
-          if (excludeUrls?.has(url)) continue;
+          if (!isSafePublicHttpUrl(url) || excludeUrls?.has(url)) continue;
           results.push({
             title: hit.title,
             summary: hit.story_text

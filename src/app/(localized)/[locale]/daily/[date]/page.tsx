@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RadarBoard } from "@/components/radar-board";
-import { isValidLocale, LOCALES } from "@/i18n/config";
+import {
+  isPlausibleArchiveDate,
+  isValidLocale,
+  LOCALES,
+} from "@/i18n/config";
 import { buildRadarJsonLd, buildRadarMetadata } from "@/lib/seo";
 import { getAllAvailableDates, getRadarPayload } from "@/lib/signals-repo";
 
 export const revalidate = 3600; // 历史归档页每小时静态缓存验证
 export const dynamicParams = true;
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function generateStaticParams() {
   const dates = await getAllAvailableDates();
@@ -29,7 +31,7 @@ export async function generateMetadata({
   params,
 }: DailyArchiveProps): Promise<Metadata> {
   const { locale, date } = await params;
-  if (!isValidLocale(locale) || !DATE_RE.test(date)) return {};
+  if (!isValidLocale(locale) || !isPlausibleArchiveDate(date)) return {};
 
   const payload = await getRadarPayload(locale, date);
   if (payload.activeDate !== date) return {};
@@ -46,7 +48,7 @@ export async function generateMetadata({
 
 export default async function DailyArchivePage({ params }: DailyArchiveProps) {
   const { locale, date } = await params;
-  if (!isValidLocale(locale) || !DATE_RE.test(date)) {
+  if (!isValidLocale(locale) || !isPlausibleArchiveDate(date)) {
     notFound();
   }
 
