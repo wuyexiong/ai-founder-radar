@@ -11,6 +11,14 @@ const PLATFORM_META: Record<
   producthunt: { label: "Product Hunt", dotClass: "bg-orange-500" },
   hackernews: { label: "Hacker News", dotClass: "bg-amber-500" },
   reddit: { label: "Reddit", dotClass: "bg-rose-500" },
+  indiehackers: {
+    label: "Indie Hackers",
+    dotClass: "bg-sky-600 dark:bg-sky-400",
+  },
+  acquire: {
+    label: "Acquire.com",
+    dotClass: "bg-teal-600 dark:bg-teal-400",
+  },
   github: { label: "GitHub", dotClass: "bg-slate-700 dark:bg-slate-300" },
   trustmrr: { label: "TrustMRR", dotClass: "bg-emerald-500" },
   appstore: { label: "App Store", dotClass: "bg-blue-500" },

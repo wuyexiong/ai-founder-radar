@@ -4,6 +4,8 @@ export type SourcePlatform =
   | "producthunt"
   | "hackernews"
   | "reddit"
+  | "indiehackers"
+  | "acquire"
   | "github"
   | "trustmrr"
   | "appstore";

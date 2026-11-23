@@ -15,18 +15,19 @@ interface DistilledOutput {
 }
 
 const SYSTEM_PROMPT = `你是一位资深出海独立开发者（Indie Hacker）与商业分析师。
-请将输入的海外英文产品/帖子提炼成结构化中文商业情报 JSON（不要输出 Markdown 代码块，不要输出思考过程，仅输出合法 JSON 对象）：
+请将输入的海外英文产品/案例/待售挂牌/痛点帖提炼成结构化中文商业情报 JSON（不要输出 Markdown 代码块，不要输出思考过程，仅输出合法 JSON 对象）：
 {
-  "titleZh": "直白有吸引力的中文标题（突出做什么+结果/痛点，禁机翻腔，32字内）",
-  "category": "launch | revenue | pain_point | ai_trend 四选一",
-  "whatItIs": "1句话讲清它解决谁的什么具体问题（45字内）",
-  "businessSignal": "提取变现模式、定价、MRR金额、获客方式或社区付费意愿强度（55字内）",
-  "indieTakeaway": "1句话犀利点评：独立开发者可切入的抄作业方向或避坑提示（55字内）",
-  "metricsBadge": "简短高亮指标，如 $8k MRR 或 ▲ 320 HN 或 💬 85 痛点讨论",
-  "metricType": "revenue | heat | pain 三选一",
+  "titleZh": "直白有吸引力的中文标题（突出产品形态+核心营收/痛点结果，禁机翻腔，32字内）",
+  "category": "launch | revenue | pain_point | ai_trend 四选一（Acquire挂牌、带MRR/营收复盘帖归入 revenue；求推荐/吐槽难用归入 pain_point）",
+  "whatItIs": "1句话讲清它解决谁的什么具体问题或痛点场景（45字内）",
+  "businessSignal": "提取变现模式、定价、MRR/ARR/净利润、叫价倍数、获客渠道或付费意愿强度（55字内）",
+  "indieTakeaway": "1句话犀利点评：独立开发者可切入的细分抄作业方向、本地化机会或避坑提示（55字内）",
+  "metricsBadge": "简短高亮指标，如 ARR $73k、$31k/mo、▲ 320 HN 或 💬 38 痛点讨论（18字内）",
+  "metricType": "revenue | heat | pain 三选一（含具体金额/MRR/ARR/利润一律选 revenue）",
   "tags": ["#标签1", "#标签2", "#标签3"],
-  "score": 8.5
-}`;
+  "score": 8.6
+}
+评分准则（1~10分）：有真实MRR/ARR/利润数据、清晰B2B定价或明确高频付费痛点给 8.5~9.5 分；有实用产品形态的新品给 7.5~8.4 分；无商业化场景的纯技术玩具/水贴给 5.5~6.4 分。`;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -222,41 +223,107 @@ export async function distillRawItem(
   }
 
   if (!distilled) {
-    const isPain = raw.sourceSublabel.includes("SomebodyMakeThis");
-    const isRevenue = /\$\d+|mrr|arr|revenue/i.test(`${raw.title} ${raw.summary}`);
+    const isPain =
+      raw.sourceSublabel.includes("SomebodyMakeThis") ||
+      raw.sourceSublabel.includes("痛点");
+    const isRevenue =
+      raw.sourcePlatform === "acquire" ||
+      /\$\d+|mrr|arr|revenue|profit|€|净利|年收|月收/i.test(
+        `${raw.title} ${raw.summary} ${raw.rawMetric}`
+      );
     distilled = {
-      titleZh: raw.title,
+      titleZh: raw.title.slice(0, 48),
       category: isPain ? "pain_point" : isRevenue ? "revenue" : "launch",
       whatItIs: raw.summary.slice(0, 90) || "海外社区新发布的热门产品或创业讨论帖。",
       businessSignal: `来自 ${raw.sourceSublabel} 一手社区信号（开启 qwen-serve 或配置 API Key 后自动生成深度拆解）。`,
-      indieTakeaway: "点击右下角查看原帖评论区真实用户反馈，验证细分场景需求。",
+      indieTakeaway: "点击右下角查看原帖真实数据与评论区反馈，验证细分场景需求。",
       metricsBadge: raw.rawMetric,
       metricType: isPain ? "pain" : isRevenue ? "revenue" : "heat",
-      tags: [`#${raw.sourcePlatform}`, `#${raw.sourceSublabel.replace(/[^a-zA-Z0-9]/g, "")}`],
-      score: 7.8,
+      tags: [`#${raw.sourcePlatform}`, `#${raw.sourceSublabel.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "")}`],
+      score: isRevenue ? 8.5 : 7.8,
     };
   }
+
+  const validCategories: SignalCategory[] = [
+    "launch",
+    "revenue",
+    "pain_point",
+    "ai_trend",
+  ];
+  const validMetricTypes: MetricType[] = ["revenue", "heat", "pain"];
+  const rawObj = distilled as unknown as Record<string, unknown>;
+
+  const rawCategory = String(distilled.category ?? "").trim();
+  const normalizedCategory: SignalCategory = validCategories.includes(
+    rawCategory as SignalCategory
+  )
+    ? (rawCategory as SignalCategory)
+    : raw.sourcePlatform === "acquire"
+      ? "revenue"
+      : raw.sourceSublabel.includes("SomebodyMakeThis")
+        ? "pain_point"
+        : "launch";
+
+  const rawMetricType = String(
+    distilled.metricType ?? rawObj.metric_type ?? ""
+  ).trim();
+  const normalizedMetricType: MetricType = validMetricTypes.includes(
+    rawMetricType as MetricType
+  )
+    ? (rawMetricType as MetricType)
+    : normalizedCategory === "revenue" ||
+        /\$\d|mrr|arr|年收|月收|净利/i.test(
+          `${distilled.metricsBadge ?? ""} ${raw.rawMetric}`
+        )
+      ? "revenue"
+      : normalizedCategory === "pain_point"
+        ? "pain"
+        : "heat";
+
+  const parsedScore = Number(distilled.score);
+  const normalizedScore = Number.isFinite(parsedScore)
+    ? Math.min(10, Math.max(1, parsedScore))
+    : 7.8;
+
+  const normalizedTags = Array.isArray(distilled.tags)
+    ? distilled.tags
+        .map((t) => String(t).trim())
+        .filter(Boolean)
+        .map((t) => (t.startsWith("#") ? t : `#${t}`))
+        .slice(0, 4)
+    : [`#${raw.sourcePlatform}`];
+
+  const parsedPubTime = Date.parse(raw.publishedAt);
+  const safePublishedAt = Number.isFinite(parsedPubTime)
+    ? new Date(parsedPubTime).toISOString()
+    : new Date().toISOString();
 
   const urlHash = createHash("sha256").update(raw.url).digest("hex").slice(0, 12);
 
   return {
     id: `sig-${urlHash}`,
     dateKey,
-    titleZh: distilled.titleZh,
+    titleZh: String(distilled.titleZh || raw.title).trim(),
     titleOrig: raw.title,
-    category: distilled.category,
-    whatItIs: distilled.whatItIs,
-    businessSignal: distilled.businessSignal,
-    indieTakeaway: distilled.indieTakeaway,
-    metricsBadge: distilled.metricsBadge,
-    metricType: distilled.metricType,
-    tags: distilled.tags,
-    score: distilled.score,
-    isTopPick: distilled.score >= 8.5,
+    category: normalizedCategory,
+    whatItIs: String(
+      distilled.whatItIs || raw.summary.slice(0, 90) || raw.title
+    ).trim(),
+    businessSignal: String(
+      distilled.businessSignal || `来自 ${raw.sourceSublabel} 社区商业信号`
+    ).trim(),
+    indieTakeaway: String(
+      distilled.indieTakeaway || "建议结合原帖评论与定价策略评估细分切入机会。"
+    ).trim(),
+    metricsBadge: String(distilled.metricsBadge || raw.rawMetric || "热门信号").trim(),
+    metricType: normalizedMetricType,
+    tags: normalizedTags.length > 0 ? normalizedTags : [`#${raw.sourcePlatform}`],
+    score: normalizedScore,
+    isTopPick: normalizedScore >= 8.5,
     sourcePlatform: raw.sourcePlatform,
     sourceSublabel: raw.sourceSublabel,
     sourceUrl: raw.url,
-    publishedAt: raw.publishedAt,
+    publishedAt: safePublishedAt,
   };
 }
 

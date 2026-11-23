@@ -132,7 +132,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       if (activeTag && !item.tags.includes(activeTag)) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const haystack = `${item.titleZh} ${item.titleOrig} ${item.whatItIs} ${item.businessSignal} ${item.indieTakeaway} ${item.tags.join(" ")}`.toLowerCase();
+        const haystack = `${item.titleZh} ${item.titleOrig} ${item.whatItIs} ${item.businessSignal} ${item.indieTakeaway} ${item.sourcePlatform} ${item.sourceSublabel} ${item.tags.join(" ")}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
