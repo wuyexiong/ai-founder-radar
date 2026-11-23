@@ -190,24 +190,34 @@ async function callGeminiPrompt<T>(
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.25,
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
-        }),
-      });
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.25,
+            },
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+      } catch {
+        if (attempt === 0) {
+          await sleep(2000);
+          continue;
+        }
+        break;
+      }
 
       if ((res.status === 429 || res.status === 503) && attempt === 0) {
         await sleep(5000);
