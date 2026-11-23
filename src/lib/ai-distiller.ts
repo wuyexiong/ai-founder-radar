@@ -53,8 +53,8 @@ interface LocalMlxEndpoint {
 
 let cachedRapidMlx: LocalMlxEndpoint | null | undefined = undefined;
 
-// 对齐 ~/.oh-my-zsh/custom/mlx-models.zsh 端口注册表：
-// 8080: qwen35-27b (Opus-Distilled 主模型)
+// 本地 Rapid-MLX 默认探测端口列表：
+// 8080: qwen35-27b (主模型)
 // 8082: qwen36-35b (Qwen3.6-35B-A3B)
 // 8083: qwen38-27b (Qwen3.8-27B)
 // 8081: qwen35-9b  (Qwen3.5-9B 轻量级)
@@ -198,7 +198,7 @@ export async function distillRawItem(
   let distilled: DistilledOutput | null = null;
 
   try {
-    // 优先级 1：自动扫描 mlx-models.zsh 的 8080~8083 端口，有任一模型在线即优先使用
+    // 优先级 1：自动探测本机 8080~8083 / 8000 端口的 Rapid-MLX 服务，在线即优先使用
     const detectedMlx = await detectLocalRapidMlx(customMlxUrl);
 
     if (detectedMlx) {
