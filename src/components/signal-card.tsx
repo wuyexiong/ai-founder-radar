@@ -1,8 +1,14 @@
 "use client";
 
 import { Bookmark, ExternalLink } from "lucide-react";
+import { HTML_LANG_MAP, type Locale } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/dictionaries";
 import { cn } from "@/lib/utils";
-import type { SignalCategory, SignalItem, SourcePlatform } from "@/types/signal";
+import type {
+  SignalCategory,
+  SignalItem,
+  SourcePlatform,
+} from "@/types/signal";
 
 export const PLATFORM_META: Record<
   SourcePlatform,
@@ -24,30 +30,17 @@ export const PLATFORM_META: Record<
   appstore: { label: "App Store", dotClass: "bg-blue-500" },
 };
 
-const CATEGORY_META: Record<
-  SignalCategory,
-  { label: string; borderLeftClass: string }
-> = {
-  revenue: {
-    label: "搞钱实战",
-    borderLeftClass: "border-l-emerald-500 dark:border-l-emerald-400",
-  },
-  launch: {
-    label: "新品首发",
-    borderLeftClass: "border-l-orange-500 dark:border-l-orange-400",
-  },
-  pain_point: {
-    label: "痛点许愿",
-    borderLeftClass: "border-l-blue-600 dark:border-l-blue-400",
-  },
-  ai_trend: {
-    label: "AI 与开源",
-    borderLeftClass: "border-l-slate-500 dark:border-l-slate-400",
-  },
+const CATEGORY_BORDER_CLASS: Record<SignalCategory, string> = {
+  revenue: "border-l-emerald-500 dark:border-l-emerald-400",
+  launch: "border-l-orange-500 dark:border-l-orange-400",
+  pain_point: "border-l-blue-600 dark:border-l-blue-400",
+  ai_trend: "border-l-slate-500 dark:border-l-slate-400",
 };
 
 interface SignalCardProps {
   item: SignalItem;
+  locale: Locale;
+  dict: Dictionary["card"];
   isBookmarked: boolean;
   isHighlighted?: boolean;
   activeTag: string | null;
@@ -56,6 +49,8 @@ interface SignalCardProps {
 
 export function SignalCard({
   item,
+  locale,
+  dict,
   isBookmarked,
   isHighlighted = false,
   activeTag,
@@ -65,7 +60,10 @@ export function SignalCard({
     label: item.sourcePlatform,
     dotClass: "bg-slate-400",
   };
-  const category = CATEGORY_META[item.category];
+  const categoryLabel =
+    dict.categories[item.category] ?? dict.categories.launch;
+  const borderLeftClass =
+    CATEGORY_BORDER_CLASS[item.category] ?? CATEGORY_BORDER_CLASS.launch;
 
   const metricBadgeClass =
     item.metricType === "revenue"
@@ -74,11 +72,18 @@ export function SignalCard({
         ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"
         : "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30";
 
-  const publishedClock = new Date(item.publishedAt).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const publishedClock = new Date(item.publishedAt).toLocaleTimeString(
+    HTML_LANG_MAP[locale],
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }
+  );
+
+  const showOrigSubtitle =
+    Boolean(item.titleOrig) &&
+    item.titleOrig.trim().toLowerCase() !== item.title.trim().toLowerCase();
 
   return (
     <article
@@ -90,7 +95,7 @@ export function SignalCard({
           : "border-slate-200/90 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-slate-700"
       )}
     >
-      {/* 第 1 层：顶栏元数据（纯静态展示，避免阅读途中误触跳动） */}
+      {/* 第 1 层：顶栏元数据 */}
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
@@ -103,7 +108,7 @@ export function SignalCard({
             </span>
           )}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-            {category.label}
+            {categoryLabel}
           </span>
         </div>
 
@@ -117,7 +122,7 @@ export function SignalCard({
             {item.metricsBadge}
           </span>
           <span
-            title="AI 商业参考价值评分"
+            title={dict.scoreTooltip}
             className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
           >
             {item.score.toFixed(1)}
@@ -128,31 +133,35 @@ export function SignalCard({
         </div>
       </div>
 
-      {/* 第 2 层：主标题 + 英文原标题 */}
+      {/* 第 2 层：当前语种主标题 + 英文原标题对照 */}
       <div className="mb-3.5">
-        <a
-          href={item.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block text-[16.5px] font-semibold leading-snug text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-50 dark:group-hover:text-blue-400"
-        >
-          {item.titleZh}
-        </a>
-        <p className="mt-1 line-clamp-1 text-[12.5px] text-slate-400 dark:text-slate-500">
-          {item.titleOrig}
-        </p>
+        <h3 className="text-[16.5px] font-semibold leading-snug">
+          <a
+            href={item.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-50 dark:group-hover:text-blue-400"
+          >
+            {item.title}
+          </a>
+        </h3>
+        {showOrigSubtitle && (
+          <p className="mt-1 line-clamp-1 text-[12.5px] text-slate-400 dark:text-slate-500">
+            {item.titleOrig}
+          </p>
+        )}
       </div>
 
       {/* 第 3 层：AI 商业透镜三要素内嵌块 */}
       <div
         className={cn(
           "mb-3.5 space-y-2 rounded-lg border border-slate-200/70 border-l-[3px] bg-slate-50/85 p-3.5 text-[13.5px] leading-relaxed dark:border-slate-800/90 dark:bg-slate-900/60",
-          category.borderLeftClass
+          borderLeftClass
         )}
       >
         <div className="flex items-baseline gap-2">
           <span className="shrink-0 font-semibold text-slate-700 dark:text-slate-300">
-            📌 是什么：
+            {dict.whatItIs}
           </span>
           <span className="text-slate-600 dark:text-slate-300">
             {item.whatItIs}
@@ -160,7 +169,7 @@ export function SignalCard({
         </div>
         <div className="flex items-baseline gap-2">
           <span className="shrink-0 font-semibold text-slate-700 dark:text-slate-300">
-            💵 怎么赚：
+            {dict.monetization}
           </span>
           <span className="text-slate-600 dark:text-slate-300 tabular-nums">
             {item.businessSignal}
@@ -168,7 +177,7 @@ export function SignalCard({
         </div>
         <div className="flex items-baseline gap-2">
           <span className="shrink-0 font-semibold text-slate-900 dark:text-slate-100">
-            💡 抄作业：
+            {dict.playbook}
           </span>
           <span className="font-medium text-slate-800 dark:text-slate-100">
             {item.indieTakeaway}
@@ -211,7 +220,7 @@ export function SignalCard({
             <Bookmark
               className={cn("h-3.5 w-3.5", isBookmarked && "fill-current")}
             />
-            {isBookmarked ? "已收藏" : "收藏"}
+            {isBookmarked ? dict.saved : dict.save}
           </button>
 
           <a
@@ -220,7 +229,7 @@ export function SignalCard({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:border-blue-500/50 dark:hover:text-blue-400"
           >
-            看原帖
+            {dict.viewSource}
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>

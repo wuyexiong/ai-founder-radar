@@ -1,37 +1,84 @@
 import { createHash } from "node:crypto";
 import type { RawFetchedItem } from "@/lib/collectors/sources";
-import type { MetricType, SignalCategory, SignalItem } from "@/types/signal";
+import { deriveTraditionalFields, toTraditionalTw } from "@/lib/zh-convert";
+import type {
+  LocalizedSignalFields,
+  MetricType,
+  SignalCategory,
+  SignalItem,
+  SignalTranslations,
+  SummaryTranslations,
+} from "@/types/signal";
 
-interface DistilledOutput {
-  titleZh: string;
+interface MultilingualDistilledOutput {
   category: SignalCategory;
-  whatItIs: string;
-  businessSignal: string;
-  indieTakeaway: string;
-  metricsBadge: string;
   metricType: MetricType;
-  tags: string[];
   score: number;
+  metricsBadge: string;
+  zh: LocalizedSignalFields;
+  en: LocalizedSignalFields;
+  ja: LocalizedSignalFields;
 }
 
-const SYSTEM_PROMPT = `你是一位资深出海独立开发者（Indie Hacker）与商业分析师。
-请将输入的海外英文产品/案例/待售挂牌/痛点帖提炼成结构化中文商业情报 JSON（不要输出 Markdown 代码块，不要输出思考过程，仅输出合法 JSON 对象）：
+const MULTILINGUAL_SYSTEM_PROMPT = `You are a seasoned Indie Hacker and Micro-SaaS commercial analyst.
+Analyze the raw overseas product/revenue/listing/pain-point signal and output a single valid JSON object (NO markdown fences, NO thinking tags) with commercial intelligence in Simplified Chinese (zh), English (en), and Japanese (ja):
 {
-  "titleZh": "直白有吸引力的中文标题（突出产品形态+核心营收/痛点结果，禁机翻腔，32字内）",
-  "category": "launch | revenue | pain_point | ai_trend 四选一（Acquire挂牌、带MRR/营收复盘帖归入 revenue；求推荐/吐槽难用归入 pain_point）",
-  "whatItIs": "1句话讲清它解决谁的什么具体问题或痛点场景（45字内）",
-  "businessSignal": "提取变现模式、定价、MRR/ARR/净利润、叫价倍数、获客渠道或付费意愿强度（55字内）",
-  "indieTakeaway": "1句话犀利点评：独立开发者可切入的细分抄作业方向、本地化机会或避坑提示（55字内）",
-  "metricsBadge": "简短高亮指标，如 ARR $73k、$31k/mo、▲ 320 HN 或 💬 38 痛点讨论（18字内）",
-  "metricType": "revenue | heat | pain 三选一（含具体金额/MRR/ARR/利润一律选 revenue）",
-  "tags": ["#标签1", "#标签2", "#标签3"],
-  "score": 8.6
+  "category": "launch | revenue | pain_point | ai_trend (Acquire listings & MRR/ARR stories -> revenue; 'looking for / hate X' complaints -> pain_point)",
+  "metricType": "revenue | heat | pain (choose revenue whenever concrete $, MRR, ARR, or profit is present)",
+  "score": 8.6,
+  "metricsBadge": "Concise highlight badge <=18 chars, e.g. ARR $73k, $31k MRR, ▲ 320 HN, 💬 38 Pain",
+  "zh": {
+    "title": "直白有吸引力的中文标题（突出产品形态+核心营收/痛点结果，禁机翻腔，32字内）",
+    "whatItIs": "1句话讲清解决谁的什么具体问题或痛点场景（45字内）",
+    "businessSignal": "提取变现模式、定价、MRR/ARR/净利、叫价倍数或获客渠道（55字内）",
+    "indieTakeaway": "1句话犀利点评：独立开发者可切入的细分抄作业方向、本地化机会或避坑提示（55字内）",
+    "metricsBadge": "如 ARR $73k、$31k/mo、▲ 320 HN 或 💬 38 痛点讨论",
+    "tags": ["#标签1", "#标签2", "#标签3"]
+  },
+  "en": {
+    "title": "Punchy, high-signal English headline highlighting product & revenue/pain outcome (<=85 chars)",
+    "whatItIs": "1 crisp sentence explaining who it serves and the exact problem solved (<=120 chars)",
+    "businessSignal": "Pricing model, MRR/ARR/profit, valuation multiple, acquisition channel, or willingness to pay (<=140 chars)",
+    "indieTakeaway": "1 sharp, actionable takeaway: replicable niche wedge, unbundling angle, or moat lesson (<=140 chars)",
+    "metricsBadge": "e.g. ARR $73k, $31k MRR, ▲ 320 HN, 💬 38 Pain",
+    "tags": ["#MicroSaaS", "#SEO", "#B2B"]
+  },
+  "ja": {
+    "title": "個人開発者向けの魅力的で簡潔な日本語タイトル（製品形態＋MRR・課題結果を強調、40文字以内）",
+    "whatItIs": "誰のどんな具体的な課題を解決するかを1文で説明（65文字以内）",
+    "businessSignal": "収益モデル、価格設定、MRR/ARR・利益率、集客チャネルまたは課金意欲（75文字以内）",
+    "indieTakeaway": "個人開発者が参考にできるニッチ戦略・ローカライズ機会・注意点（75文字以内）",
+    "metricsBadge": "例: ARR $73k、$31k MRR、▲ 320 HN、💬 38 件の議論",
+    "tags": ["#個人開発", "#MicroSaaS", "#SEO集客"]
+  }
 }
-评分准则（1~10分）：有真实MRR/ARR/利润数据、清晰B2B定价或明确高频付费痛点给 8.5~9.5 分；有实用产品形态的新品给 7.5~8.4 分；无商业化场景的纯技术玩具/水贴给 5.5~6.4 分。`;
+Scoring rubric (1-10): Verified MRR/ARR/profit, clear B2B pricing, or high-intent paid pain points = 8.5~9.5; practical commercializable launches = 7.5~8.4; pure hobby toys/fluff without monetization = 5.5~6.2.`;
+
+const BACKFILL_TRANSLATE_PROMPT = `You are a seasoned Indie Hacker commercial editor fluent in English and Japanese.
+Given an existing verified Chinese commercial signal card and its original English title, adapt it into crisp, native English (en) for Indie Hackers and natural Japanese (ja) for 個人開発者.
+Output ONLY a valid JSON object (NO markdown fences, NO thinking tags):
+{
+  "en": {
+    "title": "Punchy English headline highlighting product & concrete MRR/launch/pain outcome (<=85 chars)",
+    "whatItIs": "1 crisp sentence on target user & exact problem solved (<=125 chars)",
+    "businessSignal": "Concrete monetization, pricing, MRR/ARR, acquisition channel, or demand signal (<=145 chars)",
+    "indieTakeaway": "1 sharp actionable playbook or niche wedge for solo founders (<=145 chars)",
+    "metricsBadge": "Concise badge <=18 chars, e.g. $14.2k MRR, ▲ 318 HN, 💬 74 Pain",
+    "tags": ["#Tag1", "#Tag2", "#Tag3"]
+  },
+  "ja": {
+    "title": "個人開発者向けの自然な日本語タイトル（42文字以内）",
+    "whatItIs": "誰のどんな課題を解決するかを1文で簡潔に（65文字以内）",
+    "businessSignal": "収益モデル・価格・MRR/ARR・集客チャネルや需要の強さ（75文字以内）",
+    "indieTakeaway": "個人開発者が活かせるニッチ切り口・ローカライズのヒント（75文字以内）",
+    "metricsBadge": "18文字以内（例: $14.2k MRR、▲ 318 HN、💬 74 議論）",
+    "tags": ["#タグ1", "#タグ2", "#タグ3"]
+  }
+}`;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function extractJsonObject(rawText: string): DistilledOutput | null {
+function extractJsonGeneric<T>(rawText: string): T | null {
   const cleaned = rawText
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/```json/gi, "")
@@ -43,7 +90,11 @@ function extractJsonObject(rawText: string): DistilledOutput | null {
   if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
     return null;
   }
-  return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as DistilledOutput;
+  try {
+    return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as T;
+  } catch {
+    return null;
+  }
 }
 
 interface LocalMlxEndpoint {
@@ -66,7 +117,9 @@ const DEFAULT_MLX_URLS = [
   "http://127.0.0.1:8000/v1",
 ];
 
-async function detectLocalRapidMlx(customUrl?: string): Promise<LocalMlxEndpoint | null> {
+async function detectLocalRapidMlx(
+  customUrl?: string
+): Promise<LocalMlxEndpoint | null> {
   if (cachedRapidMlx !== undefined) return cachedRapidMlx;
 
   const candidates = customUrl ? [customUrl] : DEFAULT_MLX_URLS;
@@ -84,12 +137,14 @@ async function detectLocalRapidMlx(customUrl?: string): Promise<LocalMlxEndpoint
       const data = (await res.json()) as { data?: Array<{ id: string }> };
       const modelId = data?.data?.[0]?.id;
       if (modelId) {
-        console.log(`⚡ 自动连上本机 MLX 服务 (${baseUrl}) -> 模型: [${modelId}]`);
+        console.log(
+          `⚡ 自动连上本机 MLX 服务 (${baseUrl}) -> 模型: [${modelId}]`
+        );
         cachedRapidMlx = { baseUrl, modelId };
         return cachedRapidMlx;
       }
     } catch {
-      // 该端口未启动，继续检测下一个注册端口
+      // 该端口未启动，继续检测下一个端口
     }
   }
 
@@ -97,12 +152,18 @@ async function detectLocalRapidMlx(customUrl?: string): Promise<LocalMlxEndpoint
   return null;
 }
 
-async function callGemini(raw: RawFetchedItem, apiKey: string): Promise<DistilledOutput | null> {
+async function callGeminiPrompt<T>(
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey: string,
+  preferredModels?: string[]
+): Promise<T | null> {
   const customModel = process.env.GEMINI_MODEL?.trim();
-  // 优先采用每日免费额度高达 500 RPD / 15 RPM 的 Flash-Lite 双模型池（合计 1,000 次/天）
-  const candidateModels = customModel
-    ? [customModel]
-    : ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+  const candidateModels =
+    preferredModels ??
+    (customModel
+      ? [customModel]
+      : ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"]);
 
   for (const modelName of candidateModels) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -114,16 +175,12 @@ async function callGemini(raw: RawFetchedItem, apiKey: string): Promise<Distille
         body: JSON.stringify({
           contents: [
             {
-              parts: [
-                {
-                  text: `${SYSTEM_PROMPT}\n\n输入信号：\n来源：${raw.sourceSublabel}\n标题：${raw.title}\n摘要：${raw.summary}\n原始热度：${raw.rawMetric}`,
-                },
-              ],
+              parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
             },
           ],
           generationConfig: {
             responseMimeType: "application/json",
-            temperature: 0.3,
+            temperature: 0.25,
           },
         }),
       });
@@ -136,30 +193,32 @@ async function callGemini(raw: RawFetchedItem, apiKey: string): Promise<Distille
       if (!res.ok) break;
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return extractJsonObject(text);
+      if (text) {
+        const parsed = extractJsonGeneric<T>(text);
+        if (parsed) return parsed;
+      }
     }
   }
 
   return null;
 }
 
-async function callOpenAICompatible(
-  raw: RawFetchedItem,
+async function callOpenAICompatiblePrompt<T>(
+  systemPrompt: string,
+  userPrompt: string,
   apiKey: string,
   baseUrl: string,
   model: string,
-  isLocalMlx = false
-): Promise<DistilledOutput | null> {
+  isLocalMlx = false,
+  maxTokens = 2200
+): Promise<T | null> {
   const bodyPayload: Record<string, unknown> = {
     model,
     temperature: 0.25,
-    max_tokens: 700,
+    max_tokens: maxTokens,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `来源：${raw.sourceSublabel}\n标题：${raw.title}\n摘要：${raw.summary}\n原始热度：${raw.rawMetric}`,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
   };
 
@@ -178,7 +237,110 @@ async function callOpenAICompatible(
   if (!res.ok) return null;
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
-  return text ? extractJsonObject(text) : null;
+  return text ? extractJsonGeneric<T>(text) : null;
+}
+
+async function invokeStructuredLlm<T>(
+  systemPrompt: string,
+  userPrompt: string,
+  callIndex = 0,
+  preferredGeminiModels?: string[]
+): Promise<T | null> {
+  const customMlxUrl = process.env.RAPID_MLX_URL?.trim() || undefined;
+  const explicitRapidModel = process.env.RAPID_MLX_MODEL?.trim();
+  const ollamaModel = process.env.OLLAMA_MODEL?.trim();
+  const ollamaHost =
+    process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434/v1";
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
+  const llmKey = process.env.LLM_API_KEY?.trim();
+  const llmBaseUrl =
+    process.env.LLM_BASE_URL?.trim() || "https://api.deepseek.com/v1";
+  const llmModel = process.env.LLM_MODEL?.trim() || "deepseek-chat";
+
+  try {
+    // 优先级 1：自动探测本机 8080~8083 / 8000 端口的 Rapid-MLX 服务，在线即优先使用
+    const detectedMlx = await detectLocalRapidMlx(customMlxUrl);
+    if (detectedMlx) {
+      const res = await callOpenAICompatiblePrompt<T>(
+        systemPrompt,
+        userPrompt,
+        "not-needed",
+        detectedMlx.baseUrl,
+        explicitRapidModel || detectedMlx.modelId,
+        true
+      );
+      if (res) return res;
+    }
+
+    if (ollamaModel) {
+      const res = await callOpenAICompatiblePrompt<T>(
+        systemPrompt,
+        userPrompt,
+        "ollama",
+        ollamaHost,
+        ollamaModel,
+        true
+      );
+      if (res) return res;
+    }
+
+    if (geminiKey) {
+      if (callIndex > 0) await sleep(4200);
+      const res = await callGeminiPrompt<T>(
+        systemPrompt,
+        userPrompt,
+        geminiKey,
+        preferredGeminiModels
+      );
+      if (res) return res;
+    }
+
+    if (llmKey) {
+      const res = await callOpenAICompatiblePrompt<T>(
+        systemPrompt,
+        userPrompt,
+        llmKey,
+        llmBaseUrl,
+        llmModel
+      );
+      if (res) return res;
+    }
+  } catch (err) {
+    console.warn("[Distiller] Structured LLM call failed:", err);
+  }
+
+  return null;
+}
+
+function normalizeTagList(tags: unknown, fallbackTag: string): string[] {
+  if (!Array.isArray(tags)) return [fallbackTag];
+  const cleaned = tags
+    .map((t) => String(t).trim())
+    .filter(Boolean)
+    .map((t) => (t.startsWith("#") ? t : `#${t}`))
+    .slice(0, 4);
+  return cleaned.length > 0 ? cleaned : [fallbackTag];
+}
+
+function normalizeLocaleBlock(
+  block: Partial<LocalizedSignalFields> | undefined,
+  fallback: LocalizedSignalFields,
+  fallbackTag: string
+): LocalizedSignalFields {
+  return {
+    title: String(block?.title || fallback.title).trim(),
+    whatItIs: String(block?.whatItIs || fallback.whatItIs).trim(),
+    businessSignal: String(
+      block?.businessSignal || fallback.businessSignal
+    ).trim(),
+    indieTakeaway: String(
+      block?.indieTakeaway || fallback.indieTakeaway
+    ).trim(),
+    metricsBadge: String(
+      block?.metricsBadge || fallback.metricsBadge || ""
+    ).trim(),
+    tags: normalizeTagList(block?.tags ?? fallback.tags, fallbackTag),
+  };
 }
 
 export async function distillRawItem(
@@ -186,63 +348,22 @@ export async function distillRawItem(
   dateKey: string,
   index: number
 ): Promise<SignalItem> {
-  const customMlxUrl = process.env.RAPID_MLX_URL?.trim() || undefined;
-  const explicitRapidModel = process.env.RAPID_MLX_MODEL?.trim();
-  const ollamaModel = process.env.OLLAMA_MODEL?.trim();
-  const ollamaHost = process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434/v1";
-  const geminiKey = process.env.GEMINI_API_KEY?.trim();
-  const llmKey = process.env.LLM_API_KEY?.trim();
-  const llmBaseUrl = process.env.LLM_BASE_URL?.trim() || "https://api.deepseek.com/v1";
-  const llmModel = process.env.LLM_MODEL?.trim() || "deepseek-chat";
+  const userPrompt = `Raw Signal Input:\nSource: ${raw.sourceSublabel}\nTitle: ${raw.title}\nSummary: ${raw.summary}\nRaw Metric: ${raw.rawMetric}`;
 
-  let distilled: DistilledOutput | null = null;
+  const distilled = await invokeStructuredLlm<MultilingualDistilledOutput>(
+    MULTILINGUAL_SYSTEM_PROMPT,
+    userPrompt,
+    index
+  );
 
-  try {
-    // 优先级 1：自动探测本机 8080~8083 / 8000 端口的 Rapid-MLX 服务，在线即优先使用
-    const detectedMlx = await detectLocalRapidMlx(customMlxUrl);
-
-    if (detectedMlx) {
-      distilled = await callOpenAICompatible(
-        raw,
-        "not-needed",
-        detectedMlx.baseUrl,
-        explicitRapidModel || detectedMlx.modelId,
-        true
-      );
-    } else if (ollamaModel) {
-      distilled = await callOpenAICompatible(raw, "ollama", ollamaHost, ollamaModel, true);
-    } else if (geminiKey) {
-      // 优先级 2：本地未开启 MLX 服务时（或云端 GitHub Actions 环境），自动走免费 Gemini Flash
-      if (index > 0) await sleep(4200);
-      distilled = await callGemini(raw, geminiKey);
-    } else if (llmKey) {
-      distilled = await callOpenAICompatible(raw, llmKey, llmBaseUrl, llmModel);
-    }
-  } catch (err) {
-    console.warn("[Distiller] LLM call failed, using heuristic fallback:", err);
-  }
-
-  if (!distilled) {
-    const isPain =
-      raw.sourceSublabel.includes("SomebodyMakeThis") ||
-      raw.sourceSublabel.includes("痛点");
-    const isRevenue =
-      raw.sourcePlatform === "acquire" ||
-      /\$\d+|mrr|arr|revenue|profit|€|净利|年收|月收/i.test(
-        `${raw.title} ${raw.summary} ${raw.rawMetric}`
-      );
-    distilled = {
-      titleZh: raw.title.slice(0, 48),
-      category: isPain ? "pain_point" : isRevenue ? "revenue" : "launch",
-      whatItIs: raw.summary.slice(0, 90) || "海外社区新发布的热门产品或创业讨论帖。",
-      businessSignal: `来自 ${raw.sourceSublabel} 一手社区信号（开启 qwen-serve 或配置 API Key 后自动生成深度拆解）。`,
-      indieTakeaway: "点击右下角查看原帖真实数据与评论区反馈，验证细分场景需求。",
-      metricsBadge: raw.rawMetric,
-      metricType: isPain ? "pain" : isRevenue ? "revenue" : "heat",
-      tags: [`#${raw.sourcePlatform}`, `#${raw.sourceSublabel.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "")}`],
-      score: isRevenue ? 8.5 : 7.8,
-    };
-  }
+  const isPain =
+    raw.sourceSublabel.includes("SomebodyMakeThis") ||
+    raw.sourceSublabel.includes("痛点");
+  const isRevenue =
+    raw.sourcePlatform === "acquire" ||
+    /\$\d+|mrr|arr|revenue|profit|€|净利|年收|月收/i.test(
+      `${raw.title} ${raw.summary} ${raw.rawMetric}`
+    );
 
   const validCategories: SignalCategory[] = [
     "launch",
@@ -251,73 +372,117 @@ export async function distillRawItem(
     "ai_trend",
   ];
   const validMetricTypes: MetricType[] = ["revenue", "heat", "pain"];
-  const rawObj = distilled as unknown as Record<string, unknown>;
 
-  const rawCategory = String(distilled.category ?? "").trim();
+  const rawCategory = String(distilled?.category ?? "").trim();
   const normalizedCategory: SignalCategory = validCategories.includes(
     rawCategory as SignalCategory
   )
     ? (rawCategory as SignalCategory)
-    : raw.sourcePlatform === "acquire"
+    : isRevenue
       ? "revenue"
-      : raw.sourceSublabel.includes("SomebodyMakeThis")
+      : isPain
         ? "pain_point"
         : "launch";
 
-  const rawMetricType = String(
-    distilled.metricType ?? rawObj.metric_type ?? ""
+  const sharedBadge = String(
+    distilled?.metricsBadge ||
+      distilled?.zh?.metricsBadge ||
+      raw.rawMetric ||
+      "Hot Signal"
   ).trim();
+
+  const rawMetricType = String(distilled?.metricType ?? "").trim();
   const normalizedMetricType: MetricType = validMetricTypes.includes(
     rawMetricType as MetricType
   )
     ? (rawMetricType as MetricType)
     : normalizedCategory === "revenue" ||
-        /\$\d|mrr|arr|年收|月收|净利/i.test(
-          `${distilled.metricsBadge ?? ""} ${raw.rawMetric}`
-        )
+        /\$\d|mrr|arr|年收|月收|净利/i.test(`${sharedBadge} ${raw.rawMetric}`)
       ? "revenue"
       : normalizedCategory === "pain_point"
         ? "pain"
         : "heat";
 
-  const parsedScore = Number(distilled.score);
+  const parsedScore = Number(distilled?.score);
   const normalizedScore = Number.isFinite(parsedScore)
     ? Math.min(10, Math.max(1, parsedScore))
-    : 7.8;
+    : isRevenue
+      ? 8.5
+      : 7.8;
 
-  const normalizedTags = Array.isArray(distilled.tags)
-    ? distilled.tags
-        .map((t) => String(t).trim())
-        .filter(Boolean)
-        .map((t) => (t.startsWith("#") ? t : `#${t}`))
-        .slice(0, 4)
-    : [`#${raw.sourcePlatform}`];
+  const fallbackTag = `#${raw.sourcePlatform}`;
+
+  const zhFallback: LocalizedSignalFields = {
+    title: raw.title.slice(0, 56),
+    whatItIs:
+      raw.summary.slice(0, 90) || "海外社区新发布的热门产品或创业讨论帖。",
+    businessSignal: `来自 ${raw.sourceSublabel} 一手社区信号（配置 LLM 密钥后自动生成深度拆解）。`,
+    indieTakeaway:
+      "点击右下角查看原帖真实数据与评论区反馈，验证细分场景需求。",
+    metricsBadge: sharedBadge,
+    tags: [fallbackTag],
+  };
+
+  const enFallback: LocalizedSignalFields = {
+    title: raw.title.slice(0, 88),
+    whatItIs:
+      raw.summary.slice(0, 125) ||
+      "Trending product launch or founder discussion from the indie community.",
+    businessSignal: `First-hand community signal from ${raw.sourceSublabel} (${raw.rawMetric}).`,
+    indieTakeaway:
+      "Inspect the original thread and user comments to validate willingness to pay and niche positioning.",
+    metricsBadge: sharedBadge,
+    tags: [fallbackTag],
+  };
+
+  const jaFallback: LocalizedSignalFields = {
+    title: raw.title.slice(0, 60),
+    whatItIs:
+      raw.summary.slice(0, 95) ||
+      "海外コミュニティで話題の新着プロダクト・個人開発ディスカッション。",
+    businessSignal: `${raw.sourceSublabel} からの一次シグナル（${raw.rawMetric}）。`,
+    indieTakeaway:
+      "右下の元記事リンクから実際の数値とコメント欄の反応を確認し、ニッチ需要を検証しましょう。",
+    metricsBadge: sharedBadge,
+    tags: [fallbackTag],
+  };
+
+  const zhBlock = normalizeLocaleBlock(distilled?.zh, zhFallback, fallbackTag);
+  const enBlock = normalizeLocaleBlock(distilled?.en, enFallback, fallbackTag);
+  const jaBlock = normalizeLocaleBlock(distilled?.ja, jaFallback, fallbackTag);
+  // 繁中直接通过 OpenCC (cn -> twp) 本地零 Token 精准派生
+  const zhTwBlock = deriveTraditionalFields(zhBlock);
+
+  const translations: SignalTranslations = {
+    "zh-TW": zhTwBlock,
+    en: enBlock,
+    ja: jaBlock,
+  };
 
   const parsedPubTime = Date.parse(raw.publishedAt);
   const safePublishedAt = Number.isFinite(parsedPubTime)
     ? new Date(parsedPubTime).toISOString()
     : new Date().toISOString();
 
-  const urlHash = createHash("sha256").update(raw.url).digest("hex").slice(0, 12);
+  const urlHash = createHash("sha256")
+    .update(raw.url)
+    .digest("hex")
+    .slice(0, 12);
 
   return {
     id: `sig-${urlHash}`,
     dateKey,
-    titleZh: String(distilled.titleZh || raw.title).trim(),
+    title: zhBlock.title,
+    titleZh: zhBlock.title,
     titleOrig: raw.title,
     category: normalizedCategory,
-    whatItIs: String(
-      distilled.whatItIs || raw.summary.slice(0, 90) || raw.title
-    ).trim(),
-    businessSignal: String(
-      distilled.businessSignal || `来自 ${raw.sourceSublabel} 社区商业信号`
-    ).trim(),
-    indieTakeaway: String(
-      distilled.indieTakeaway || "建议结合原帖评论与定价策略评估细分切入机会。"
-    ).trim(),
-    metricsBadge: String(distilled.metricsBadge || raw.rawMetric || "热门信号").trim(),
+    whatItIs: zhBlock.whatItIs,
+    businessSignal: zhBlock.businessSignal,
+    indieTakeaway: zhBlock.indieTakeaway,
+    metricsBadge: zhBlock.metricsBadge || sharedBadge,
     metricType: normalizedMetricType,
-    tags: normalizedTags.length > 0 ? normalizedTags : [`#${raw.sourcePlatform}`],
+    tags: zhBlock.tags,
+    translations,
     score: normalizedScore,
     isTopPick: normalizedScore >= 8.5,
     sourcePlatform: raw.sourcePlatform,
@@ -327,50 +492,125 @@ export async function distillRawItem(
   };
 }
 
+export async function translateExistingSignalRow(
+  row: {
+    titleZh: string;
+    titleOrig: string;
+    whatItIs: string;
+    businessSignal: string;
+    indieTakeaway: string;
+    metricsBadge: string;
+    tags: string[];
+    sourcePlatform: string;
+    existingTranslations?: SignalTranslations | null;
+  },
+  callIndex = 0
+): Promise<SignalTranslations> {
+  const zhTw = deriveTraditionalFields({
+    title: row.titleZh,
+    whatItIs: row.whatItIs,
+    businessSignal: row.businessSignal,
+    indieTakeaway: row.indieTakeaway,
+    metricsBadge: row.metricsBadge,
+    tags: row.tags,
+  });
+
+  const existing = row.existingTranslations ?? {};
+  if (existing.en?.title && existing.ja?.title) {
+    return {
+      ...existing,
+      "zh-TW": existing["zh-TW"] ?? zhTw,
+    };
+  }
+
+  const userPrompt = `Original English Title: ${row.titleOrig}
+Chinese Distilled Headline: ${row.titleZh}
+What It Is (ZH): ${row.whatItIs}
+Business Signal (ZH): ${row.businessSignal}
+Indie Takeaway (ZH): ${row.indieTakeaway}
+Metrics Badge: ${row.metricsBadge}
+Tags (ZH): ${(row.tags ?? []).join(", ")}`;
+
+  const parsed = await invokeStructuredLlm<{
+    en?: Partial<LocalizedSignalFields>;
+    ja?: Partial<LocalizedSignalFields>;
+  }>(BACKFILL_TRANSLATE_PROMPT, userPrompt, callIndex);
+
+  const fallbackTag = `#${row.sourcePlatform}`;
+  const enFallback: LocalizedSignalFields = {
+    title: row.titleOrig || row.titleZh,
+    whatItIs: row.whatItIs,
+    businessSignal: row.businessSignal,
+    indieTakeaway: row.indieTakeaway,
+    metricsBadge: row.metricsBadge,
+    tags: row.tags,
+  };
+
+  return {
+    "zh-TW": zhTw,
+    en: parsed?.en
+      ? normalizeLocaleBlock(parsed.en, enFallback, fallbackTag)
+      : existing.en ?? enFallback,
+    ja: parsed?.ja
+      ? normalizeLocaleBlock(parsed.ja, enFallback, fallbackTag)
+      : existing.ja ?? enFallback,
+  };
+}
+
 export async function generateDailyEditorialSummary(
   items: SignalItem[]
-): Promise<string> {
-  const defaultSummary = `今日共精选 ${items.length} 条海外新品、真实营收与用户痛点信号，点击卡片标签可按细分赛道快速筛选。`;
-  if (items.length === 0) return defaultSummary;
+): Promise<{ summaryNote: string; summaryTranslations: SummaryTranslations }> {
+  const defaultZh = `今日共精选 ${items.length} 条海外新品、真实营收与用户痛点信号，点击卡片标签可按细分赛道快速筛选。`;
+  const defaultEn = `Curated ${items.length} high-signal Micro-SaaS launches, verified MRR case studies, and founder pain points today.`;
+  const defaultJa = `本日は海外の最新プロダクト、リアルなMRR収益事例、ユーザーの課題シグナルから厳選した ${items.length} 件をお届けします。`;
 
-  const geminiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!geminiKey) return defaultSummary;
+  if (items.length === 0) {
+    return {
+      summaryNote: defaultZh,
+      summaryTranslations: {
+        "zh-TW": toTraditionalTw(defaultZh),
+        en: defaultEn,
+        ja: defaultJa,
+      },
+    };
+  }
 
   const digestTitles = items
     .slice(0, 10)
-    .map((it, idx) => `${idx + 1}. [${it.category}] ${it.titleZh} (${it.metricsBadge})`)
+    .map(
+      (it, idx) =>
+        `${idx + 1}. [${it.category}] ${it.titleZh} / ${it.titleOrig} (${it.metricsBadge})`
+    )
     .join("\n");
 
-  // 每天仅调用 1 次高阶 3.8-flash（20 RPD 仅耗 1 次）生成主编级全局风向洞察，失败回退 3.5-flash-lite
-  for (const modelName of ["gemini-3.8-flash", "gemini-3.5-flash-lite"]) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `你是出海独立开发主编。请根据今日精选标题列表，用 2 句话（不超过 85 字，纯文本不要换行或加粗）高度概括今天海外产品与搞钱赛道的重点风向：\n${digestTitles}`,
-                  },
-                ],
-              },
-            ],
-            generationConfig: { temperature: 0.3 },
-          }),
-        }
-      );
-      if (!res.ok) continue;
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (text) return text.replace(/\s+/g, " ");
-    } catch {
-      // ignore and try fallback
-    }
-  }
+  const systemPrompt = `You are the Editor-in-Chief of IndieRadar. Summarize today's key Micro-SaaS, AI & monetization trends in 2 concise plain-text sentences (no line breaks, no markdown bolding) across Simplified Chinese (zh, <=85 chars), English (en, <=200 chars), and Japanese (ja, <=110 chars). Output ONLY valid JSON:
+{
+  "zh": "...",
+  "en": "...",
+  "ja": "..."
+}`;
 
-  return defaultSummary;
+  const parsed = await invokeStructuredLlm<{
+    zh?: string;
+    en?: string;
+    ja?: string;
+  }>(
+    systemPrompt,
+    `Today's Top Curated Signals:\n${digestTitles}`,
+    0,
+    ["gemini-3.8-flash", "gemini-3.5-flash-lite"]
+  );
+
+  const zhText = parsed?.zh?.replace(/\s+/g, " ").trim() || defaultZh;
+  const enText = parsed?.en?.replace(/\s+/g, " ").trim() || defaultEn;
+  const jaText = parsed?.ja?.replace(/\s+/g, " ").trim() || defaultJa;
+
+  return {
+    summaryNote: zhText,
+    summaryTranslations: {
+      "zh-TW": toTraditionalTw(zhText),
+      en: enText,
+      ja: jaText,
+    },
+  };
 }

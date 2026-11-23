@@ -1,0 +1,77 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { RadarBoard } from "@/components/radar-board";
+import { isValidLocale, LOCALES } from "@/i18n/config";
+import { buildRadarJsonLd, buildRadarMetadata } from "@/lib/seo";
+import { getAllAvailableDates, getRadarPayload } from "@/lib/signals-repo";
+
+export const revalidate = 3600; // 历史归档页每小时静态缓存验证
+export const dynamicParams = true;
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function generateStaticParams() {
+  const dates = await getAllAvailableDates();
+  const params: Array<{ locale: string; date: string }> = [];
+  for (const locale of LOCALES) {
+    for (const date of dates.slice(0, 15)) {
+      params.push({ locale, date });
+    }
+  }
+  return params;
+}
+
+interface DailyArchiveProps {
+  params: Promise<{ locale: string; date: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: DailyArchiveProps): Promise<Metadata> {
+  const { locale, date } = await params;
+  if (!isValidLocale(locale) || !DATE_RE.test(date)) return {};
+
+  const payload = await getRadarPayload(locale, date);
+  if (payload.activeDate !== date) return {};
+
+  return buildRadarMetadata({
+    locale,
+    dateKey: date,
+    latestDate: payload.availableDates[0] ?? date,
+    isArchiveRoute: true,
+    overview: payload.overview,
+    items: payload.items,
+  });
+}
+
+export default async function DailyArchivePage({ params }: DailyArchiveProps) {
+  const { locale, date } = await params;
+  if (!isValidLocale(locale) || !DATE_RE.test(date)) {
+    notFound();
+  }
+
+  const payload = await getRadarPayload(locale, date);
+  if (payload.activeDate !== date) {
+    notFound();
+  }
+
+  const jsonLd = buildRadarJsonLd({
+    locale,
+    dateKey: date,
+    isArchiveRoute: true,
+    overview: payload.overview,
+    items: payload.items,
+  });
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+      <RadarBoard payload={payload} />
+    </>
+  );
+}

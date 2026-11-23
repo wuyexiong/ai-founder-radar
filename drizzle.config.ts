@@ -12,6 +12,10 @@ function cleanUrl(raw?: string): string {
     const u = new URL(unbracketed);
     u.searchParams.delete("channel_binding");
     u.searchParams.delete("pgbouncer");
+    // Supabase Pooler 6543 (Transaction Mode) 不支持 drizzle-kit 预编译内省，自动切至同主机 5432 (Session Mode)
+    if (u.hostname.endsWith(".pooler.supabase.com") && u.port === "6543") {
+      u.port = "5432";
+    }
     return u.toString();
   } catch {
     return unbracketed;

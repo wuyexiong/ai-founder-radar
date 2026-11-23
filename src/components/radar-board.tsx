@@ -11,6 +11,7 @@ import {
   Clock,
   ExternalLink,
   Flame,
+  Globe,
   Layers,
   Mail,
   Moon,
@@ -25,35 +26,23 @@ import {
   X,
 } from "lucide-react";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
+import {
+  buildLocalePath,
+  LOCALE_COOKIE,
+  LOCALE_LABELS,
+  LOCALES,
+  type Locale,
+} from "@/i18n/config";
+import { getDictionary } from "@/i18n/dictionaries";
 import type { RadarPagePayload } from "@/lib/signals-repo";
 import { cn } from "@/lib/utils";
-import type { SignalCategory, SignalItem, SourcePlatform } from "@/types/signal";
+import type {
+  SignalCategory,
+  SignalItem,
+  SourcePlatform,
+} from "@/types/signal";
 
 type TabFilter = "top" | "all" | SignalCategory | "saved";
-
-const TABS: Array<{ id: TabFilter; label: string; icon: React.ReactNode }> = [
-  {
-    id: "top",
-    label: "今日必读精选",
-    icon: <Flame className="h-3.5 w-3.5 text-orange-500" />,
-  },
-  { id: "all", label: "全部信号", icon: <Layers className="h-3.5 w-3.5" /> },
-  {
-    id: "revenue",
-    label: "搞钱实战 & MRR",
-    icon: <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />,
-  },
-  {
-    id: "launch",
-    label: "新品首发",
-    icon: <Sparkles className="h-3.5 w-3.5 text-amber-500" />,
-  },
-  {
-    id: "pain_point",
-    label: "海外痛点池",
-    icon: <Target className="h-3.5 w-3.5 text-blue-500" />,
-  },
-];
 
 const PLATFORM_ORDER: SourcePlatform[] = [
   "producthunt",
@@ -68,9 +57,55 @@ const PLATFORM_ORDER: SourcePlatform[] = [
 
 const COLLAPSED_TAG_LIMIT = 10;
 
+function persistLocaleCookie(nextLocale: Locale) {
+  document.cookie = `${LOCALE_COOKIE}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
+}
+
 export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
-  const { availableDates, activeDate, overview, items, tools, storageMode } =
-    payload;
+  const {
+    locale,
+    availableDates,
+    activeDate,
+    overview,
+    items,
+    tools,
+    storageMode,
+  } = payload;
+
+  const dict = useMemo(() => getDictionary(locale), [locale]);
+  const latestDate = availableDates[0];
+
+  const tabs: Array<{ id: TabFilter; label: string; icon: React.ReactNode }> =
+    useMemo(
+      () => [
+        {
+          id: "top",
+          label: dict.tabs.top,
+          icon: <Flame className="h-3.5 w-3.5 text-orange-500" />,
+        },
+        {
+          id: "all",
+          label: dict.tabs.all,
+          icon: <Layers className="h-3.5 w-3.5" />,
+        },
+        {
+          id: "revenue",
+          label: dict.tabs.revenue,
+          icon: <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />,
+        },
+        {
+          id: "launch",
+          label: dict.tabs.launch,
+          icon: <Sparkles className="h-3.5 w-3.5 text-amber-500" />,
+        },
+        {
+          id: "pain_point",
+          label: dict.tabs.pain_point,
+          icon: <Target className="h-3.5 w-3.5 text-blue-500" />,
+        },
+      ],
+      [dict]
+    );
 
   const [activeTab, setActiveTab] = useState<TabFilter>("top");
   const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
@@ -159,7 +194,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     });
   }, [items, activeTab, bookmarks]);
 
-  // 信源平台计数：展示当日所有有数据的平台，同时呈现当前 Tab 内命中数与全局数
+  // 信源平台计数
   const platformOptions = useMemo(() => {
     const totalByPlat = new Map<SourcePlatform, number>();
     const tabByPlat = new Map<SourcePlatform, number>();
@@ -178,21 +213,23 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     }
 
     return PLATFORM_ORDER.filter((p) => (totalByPlat.get(p) ?? 0) > 0).map(
-      (platform) => ({
-        platform,
-        tabCount: tabByPlat.get(platform) ?? 0,
-        totalCount: totalByPlat.get(platform) ?? 0,
+      (p) => ({
+        platform: p,
+        tabCount: tabByPlat.get(p) ?? 0,
+        totalCount: totalByPlat.get(p) ?? 0,
       })
     );
   }, [items, tabScopedItems]);
 
-  // 第二级过滤：当前 Tab + 当前信源平台下的集合，用于实时动态计算「热门搞钱切口」
+  // 第二级过滤：叠加信源平台后的集合
   const platformScopedItems = useMemo(() => {
     if (!activePlatform) return tabScopedItems;
-    return tabScopedItems.filter((i) => i.sourcePlatform === activePlatform);
+    return tabScopedItems.filter(
+      (item) => item.sourcePlatform === activePlatform
+    );
   }, [tabScopedItems, activePlatform]);
 
-  // 实时联动标签计数（随频道与信源动态重算，杜绝点出空列表）
+  // 动态切口标签统计
   const tagCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of platformScopedItems) {
@@ -203,7 +240,6 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [platformScopedItems]);
 
-  // 折叠态默认展示 Top 10 标签；若当前选中的长尾标签不在前 10，自动置顶确保可见
   const displayedTags = useMemo(() => {
     if (tagsExpanded || tagCounts.length <= COLLAPSED_TAG_LIMIT) {
       return tagCounts;
@@ -211,42 +247,55 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     const topSlice = tagCounts.slice(0, COLLAPSED_TAG_LIMIT);
     if (activeTag && !topSlice.some(([t]) => t === activeTag)) {
       const activeEntry = tagCounts.find(([t]) => t === activeTag);
-      return [
-        activeEntry ?? ([activeTag, 0] as [string, number]),
-        ...topSlice.slice(0, COLLAPSED_TAG_LIMIT - 1),
-      ];
+      if (activeEntry) {
+        return [...topSlice.slice(0, COLLAPSED_TAG_LIMIT - 1), activeEntry];
+      }
     }
     return topSlice;
   }, [tagCounts, tagsExpanded, activeTag]);
 
-  // 最终展示列表（频道 × 信源 × 标签 × 搜索词）
+  // 最终列表过滤
   const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return platformScopedItems.filter((item) => {
       if (activeTag && !item.tags.includes(activeTag)) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const haystack = `${item.titleZh} ${item.titleOrig} ${item.whatItIs} ${item.businessSignal} ${item.indieTakeaway} ${item.sourcePlatform} ${item.sourceSublabel} ${item.tags.join(" ")}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
+      if (!q) return true;
+
+      const haystack = [
+        item.title,
+        item.titleZh,
+        item.titleOrig,
+        item.whatItIs,
+        item.businessSignal,
+        item.indieTakeaway,
+        item.metricsBadge,
+        ...item.tags,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
     });
   }, [platformScopedItems, activeTag, searchQuery]);
 
-  const topThreeItems = useMemo(() => items.slice(0, 3), [items]);
+  const topThreeItems = useMemo(() => {
+    return [...items].sort((a, b) => b.score - a.score).slice(0, 3);
+  }, [items]);
 
-  const handleSelectPlatform = (platform: SourcePlatform) => {
-    if (activePlatform === platform) {
+  const handleSelectPlatform = (p: SourcePlatform) => {
+    if (activePlatform === p) {
       setActivePlatform(null);
       return;
     }
-    setActivePlatform(platform);
-    setActiveTag(null);
-    // 若在「今日必读精选」下该平台暂无 >=8.5 分卡片，自动切到「全部信号」避免出现空列表
-    const hasInCurrentTab = tabScopedItems.some(
-      (i) => i.sourcePlatform === platform
-    );
+    const hasInCurrentTab = tabScopedItems.some((i) => i.sourcePlatform === p);
     if (!hasInCurrentTab) {
       setActiveTab("all");
+    }
+    setActivePlatform(p);
+    if (
+      activeTag &&
+      !items.some((i) => i.sourcePlatform === p && i.tags.includes(activeTag))
+    ) {
+      setActiveTag(null);
     }
   };
 
@@ -263,7 +312,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     }
   };
 
-  // 右侧 Top 3 点击联动：跨 Tab 自动穿透还原视图 + 避开顶栏平滑滚动 + 脉冲边框高亮
+  // 右侧 Top 3 点击联动
   const handleFocusTopItem = (targetItem: SignalItem) => {
     const isCurrentlyVisible = filteredItems.some(
       (i) => i.id === targetItem.id
@@ -303,9 +352,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 transition-colors dark:bg-[#090D16] dark:text-slate-100">
       {/* Sticky 顶栏 (56px) */}
       <header className="sticky top-0 z-40 h-14 border-b border-slate-200/90 bg-white/85 backdrop-blur-md dark:border-slate-800/90 dark:bg-[#090D16]/85">
-        <div className="mx-auto flex h-full max-w-[1240px] items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-full max-w-[1240px] items-center justify-between gap-2.5 px-4 sm:px-6">
           {/* 品牌标识 */}
-          <div className="flex items-center gap-2.5">
+          <Link
+            href={`/${locale}`}
+            className="flex items-center gap-2.5 shrink-0"
+          >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-blue-600">
               <Radar className="h-4 w-4" />
             </div>
@@ -313,18 +365,21 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               <span className="text-base font-bold tracking-tight">
                 IndieRadar
               </span>
-              <span className="hidden text-xs font-medium text-slate-500 sm:inline dark:text-slate-400">
-                出海搞钱与产品灵感雷达
+              <span className="hidden text-xs font-medium text-slate-500 lg:inline dark:text-slate-400">
+                {dict.header.tagline}
               </span>
             </div>
-          </div>
+          </Link>
 
-          {/* 中间：日期快速切换器 */}
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900">
+          {/* 中间：独立静态归档路由日期切换器 */}
+          <nav
+            aria-label="Daily archive navigation"
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
+          >
             {olderDate ? (
               <Link
-                href={`/?date=${olderDate}`}
-                title={`查看 ${olderDate}`}
+                href={buildLocalePath(locale, olderDate, latestDate)}
+                title={dict.header.viewDate(olderDate)}
                 className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -335,19 +390,19 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               </span>
             )}
 
-            <span className="px-2 font-mono font-semibold text-slate-800 dark:text-slate-200">
+            <span className="px-1.5 font-mono font-semibold text-slate-800 sm:px-2 dark:text-slate-200">
               {activeDate}
-              {activeDate === availableDates[0] && (
-                <span className="ml-1.5 rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  最新
+              {activeDate === latestDate && (
+                <span className="ml-1.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+                  {dict.header.latestBadge}
                 </span>
               )}
             </span>
 
             {newerDate ? (
               <Link
-                href={`/?date=${newerDate}`}
-                title={`查看 ${newerDate}`}
+                href={buildLocalePath(locale, newerDate, latestDate)}
+                title={dict.header.viewDate(newerDate)}
                 className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -357,10 +412,10 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 <ChevronRight className="h-3.5 w-3.5" />
               </span>
             )}
-          </div>
+          </nav>
 
-          {/* 右侧：搜索框 + 收藏夹 + 主题切换 */}
-          <div className="flex items-center gap-2">
+          {/* 右侧：搜索框 + 四语种切换胶囊 + 收藏夹 + 主题切换 */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <div className="relative hidden md:block">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
@@ -368,8 +423,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜赛道、MRR、痛点... (⌘K)"
-                className="h-8 w-52 rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-7 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none lg:w-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-500"
+                placeholder={dict.header.searchDesktop}
+                className="h-8 w-44 rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-7 text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none xl:w-56 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-500"
               />
               {searchQuery && (
                 <button
@@ -382,27 +437,56 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               )}
             </div>
 
+            {/* 四语种直达胶囊切换器（爬虫友好 <a href> + Cookie 记忆） */}
+            <div
+              role="navigation"
+              aria-label={dict.header.switchLang}
+              className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold dark:border-slate-800 dark:bg-slate-900"
+            >
+              <Globe className="mx-1 hidden h-3.5 w-3.5 text-slate-400 sm:inline" />
+              {LOCALES.map((loc) => {
+                const active = loc === locale;
+                const info = LOCALE_LABELS[loc];
+                return (
+                  <Link
+                    key={loc}
+                    href={buildLocalePath(loc, activeDate, latestDate)}
+                    onClick={() => persistLocaleCookie(loc)}
+                    title={info.native}
+                    className={cn(
+                      "rounded-md px-1.5 py-1 leading-none transition-colors sm:px-2",
+                      active
+                        ? "bg-white text-slate-900 shadow-2xs dark:bg-blue-600 dark:text-white"
+                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                    )}
+                  >
+                    {info.short}
+                  </Link>
+                );
+              })}
+            </div>
+
             <button
               type="button"
               onClick={() =>
                 setActiveTab((prev) => (prev === "saved" ? "top" : "saved"))
               }
               className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium tabular-nums transition-colors cursor-pointer",
+                "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium tabular-nums transition-colors sm:px-2.5 cursor-pointer",
                 activeTab === "saved"
                   ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300"
                   : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
               )}
             >
               <Bookmark className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">收藏</span>
+              <span className="hidden sm:inline">{dict.header.saved}</span>
               <span className="font-mono">{bookmarks.length}</span>
             </button>
 
             <button
               type="button"
               onClick={toggleTheme}
-              aria-label="切换深浅色主题"
+              aria-label={dict.header.toggleTheme}
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
             >
               {isDark ? (
@@ -421,15 +505,17 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 dark:text-slate-300">
             <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white tabular-nums">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              已扫描 {overview.scannedCount} 条海外一手信号 · 精选{" "}
-              {items.length} 条商业卡片
+              {dict.overview.scannedSummary(
+                overview.scannedCount,
+                items.length
+              )}
             </span>
             <span className="hidden text-slate-300 sm:inline dark:text-slate-700">
               |
             </span>
             <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 tabular-nums">
               <Clock className="h-3.5 w-3.5" />
-              预计 {overview.estimatedReadMinutes} 分钟刷完
+              {dict.overview.estReadTime(overview.estimatedReadMinutes)}
             </span>
           </div>
 
@@ -443,8 +529,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               )}
             >
               {storageMode === "supabase"
-                ? "● 云端 PostgreSQL 实时库"
-                : "● 本地精选样本模式（配好 .env.local 自动切云端）"}
+                ? dict.overview.storageCloud
+                : dict.overview.storageLocal}
             </span>
           </div>
         </div>
@@ -452,11 +538,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
       {/* 主体双栏容器 */}
       <main className="mx-auto max-w-[1240px] px-4 py-5 sm:px-6">
+        <h1 className="sr-only">{dict.overview.headingSrOnly(activeDate)}</h1>
+
         {/* 当日主编一句话风向总结 */}
         {overview.summaryNote && (
           <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/60 px-4 py-2.5 text-[13.5px] text-slate-700 dark:border-blue-500/20 dark:bg-blue-950/25 dark:text-slate-300">
             <span className="font-semibold text-blue-700 dark:text-blue-400">
-              今日风向速览：
+              {dict.overview.editorialPrefix}
             </span>
             {overview.summaryNote}
           </div>
@@ -470,7 +558,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜赛道、MRR、痛点关键词..."
+              placeholder={dict.header.searchMobile}
               className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs dark:border-slate-800 dark:bg-[#111827]"
             />
             {searchQuery && (
@@ -490,7 +578,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           <div className="lg:col-span-8">
             {/* 一级粘性栏：五大核心信号频道切换 */}
             <div className="no-scrollbar sticky top-14 z-30 -mx-4 mb-2.5 flex items-center gap-1.5 overflow-x-auto bg-[#F8FAFC]/95 px-4 py-2 backdrop-blur-sm sm:mx-0 sm:px-0 dark:bg-[#090D16]/95">
-              {TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 const count =
                   tab.id === "top"
@@ -545,13 +633,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               })}
             </div>
 
-            {/* 二级紧凑联动筛选台：信源平台胶囊 + Top 10 热门搞钱切口（支持折叠抽屉） */}
+            {/* 二级紧凑联动筛选台 */}
             <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]">
-              {/* 第 1 排：信源平台直达 + 一键重置 */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                    信源
+                    {dict.filters.sourcesLabel}
                   </span>
                   <button
                     type="button"
@@ -563,7 +650,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                     )}
                   >
-                    全部
+                    {dict.filters.allSources}
                     <span className="font-mono text-[10px] opacity-75">
                       {tabScopedItems.length}
                     </span>
@@ -587,8 +674,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                           onClick={() => handleSelectPlatform(platform)}
                           title={
                             tabCount === 0
-                              ? `当前频道无该源，点击自动切至全部信号查看 ${totalCount} 条`
-                              : `筛选 ${meta.label}`
+                              ? dict.filters.crossTabHint(totalCount)
+                              : dict.filters.filterPlatform(meta.label)
                           }
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
@@ -622,12 +709,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
                   >
                     <RotateCcw className="h-3 w-3" />
-                    清空筛选
+                    {dict.filters.clearFilters}
                   </button>
                 )}
               </div>
 
-              {/* 第 2 排：热门搞钱切口（默认仅展示高频 Top 10 + 展开全部折叠抽屉） */}
+              {/* 切口标签行 */}
               {tagCounts.length > 0 && (
                 <div className="mt-2.5 border-t border-slate-100 pt-2.5 dark:border-slate-800/80">
                   <div
@@ -638,7 +725,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     )}
                   >
                     <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                      切口
+                      {dict.filters.anglesLabel}
                     </span>
                     {displayedTags.map(([tag, count]) => {
                       const selected = activeTag === tag;
@@ -670,12 +757,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                       >
                         {tagsExpanded ? (
                           <>
-                            收起切口
+                            {dict.filters.collapseAngles}
                             <ChevronUp className="h-3 w-3" />
                           </>
                         ) : (
                           <>
-                            +{tagCounts.length - COLLAPSED_TAG_LIMIT} 更多切口
+                            {dict.filters.expandAngles(
+                              tagCounts.length - COLLAPSED_TAG_LIMIT
+                            )}
                             <ChevronDown className="h-3 w-3" />
                           </>
                         )}
@@ -693,6 +782,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   <SignalCard
                     key={item.id}
                     item={item}
+                    locale={locale}
+                    dict={dict.card}
                     isBookmarked={bookmarks.includes(item.id)}
                     isHighlighted={highlightedId === item.id}
                     activeTag={activeTag}
@@ -704,8 +795,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#111827]">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                   {activeTab === "saved"
-                    ? "你还没有收藏任何商机卡片，看到有启发的点子可点右下角「收藏」沉淀灵感。"
-                    : "没有找到匹配当前交叉筛选条件的信号卡片。"}
+                    ? dict.filters.emptySaved
+                    : dict.filters.emptyFiltered}
                 </p>
                 <button
                   type="button"
@@ -717,21 +808,21 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   }}
                   className="mt-3 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white dark:bg-blue-600 cursor-pointer"
                 >
-                  重置全部筛选条件
+                  {dict.filters.resetAll}
                 </button>
               </div>
             )}
           </div>
 
-          {/* 右侧粘性辅助边栏 (4 cols)：首屏一屏尽览三件套 + 小屏独立内滚兜底 */}
+          {/* 右侧粘性辅助边栏 (4 cols) */}
           <aside className="lg:col-span-4">
             <div className="thin-scrollbar space-y-3.5 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-88px)] lg:overflow-y-auto lg:pr-0.5">
-              {/* 模块 1：当日商业价值 Top 3 速览（点击跨 Tab 穿透定位并脉冲高亮） */}
+              {/* 模块 1：当日高分 Top 3 速览 */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
                 <h2 className="mb-2.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  <span>🏆 当日高分商机 Top 3</span>
+                  <span>{dict.sidebar.top3Title}</span>
                   <span className="font-mono text-[11px] font-normal">
-                    点击定位
+                    {dict.sidebar.top3Locate}
                   </span>
                 </h2>
                 <div className="space-y-1.5">
@@ -756,7 +847,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                           </span>
                           <div>
                             <span className="line-clamp-2 text-xs font-medium leading-snug text-slate-800 group-hover:text-blue-600 dark:text-slate-200 dark:group-hover:text-blue-400">
-                              {item.titleZh}
+                              {item.title}
                             </span>
                             <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
                               {pMeta && (
@@ -786,15 +877,15 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 </div>
               </div>
 
-              {/* 模块 2：出海建站免费工具箱（Affiliate 变现预留位） */}
+              {/* 模块 2：出海建站零成本工具箱 */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
                 <div className="mb-2.5 flex items-center justify-between">
                   <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <Wrench className="h-3.5 w-3.5" />
-                    出海建站零成本工具箱
+                    {dict.sidebar.toolboxTitle}
                   </h2>
                   <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                    精选免费层
+                    {dict.sidebar.toolboxBadge}
                   </span>
                 </div>
                 <div className="space-y-1.5">
@@ -829,14 +920,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
                 <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
                   <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                  订阅每日 5 分钟出海搞钱早报
+                  {dict.sidebar.newsletterTitle}
                 </h2>
                 <p className="mb-2.5 text-xs text-slate-500 dark:text-slate-400">
-                  每天早 8 点推送当日 Top 5 验证过的海外新产品与 MRR 案例。
+                  {dict.sidebar.newsletterDesc}
                 </p>
                 {subscribed ? (
                   <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                    ✓ 已记录邮箱预览（阶段 3 接入 Resend 后自动发信）
+                    {dict.sidebar.newsletterSuccess}
                   </div>
                 ) : (
                   <form
@@ -858,7 +949,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                       type="submit"
                       className="h-8 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
                     >
-                      免费订阅
+                      {dict.sidebar.newsletterCta}
                     </button>
                   </form>
                 )}
@@ -869,8 +960,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
         {/* 页脚 */}
         <footer className="mt-14 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
-          IndieRadar · 专注全球出海、AI、Micro-SaaS 与独立开发真实变现信号 ·
-          Powered by Next.js + Drizzle + Supabase
+          {dict.footer.copyright}
         </footer>
       </main>
     </div>

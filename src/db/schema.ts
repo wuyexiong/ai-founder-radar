@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { SignalTranslations, SummaryTranslations } from "@/types/signal";
 
 export const signalItems = pgTable(
   "signal_items",
@@ -24,6 +25,10 @@ export const signalItems = pgTable(
     metricsBadge: text("metrics_badge").notNull(),
     metricType: text("metric_type").notNull(), // revenue | heat | pain
     tags: jsonb("tags").$type<string[]>().notNull().default([]),
+    translations: jsonb("translations")
+      .$type<SignalTranslations>()
+      .notNull()
+      .default({}),
     score: doublePrecision("score").notNull().default(7.5),
     isTopPick: boolean("is_top_pick").notNull().default(false),
     sourcePlatform: text("source_platform").notNull(),
@@ -45,5 +50,9 @@ export const dailyStats = pgTable("daily_stats", {
   selectedCount: integer("selected_count").notNull().default(0),
   estimatedReadMinutes: integer("estimated_read_minutes").notNull().default(5),
   summaryNote: text("summary_note").notNull().default(""),
+  summaryTranslations: jsonb("summary_translations")
+    .$type<SummaryTranslations>()
+    .notNull()
+    .default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n/config";
+
 export type SignalCategory = "launch" | "revenue" | "pain_point" | "ai_trend";
 
 export type SourcePlatform =
@@ -12,9 +14,25 @@ export type SourcePlatform =
 
 export type MetricType = "revenue" | "heat" | "pain";
 
+export interface LocalizedSignalFields {
+  title: string;
+  whatItIs: string;
+  businessSignal: string;
+  indieTakeaway: string;
+  metricsBadge?: string;
+  tags: string[];
+}
+
+export type SignalTranslations = Partial<
+  Record<Exclude<Locale, "zh">, LocalizedSignalFields>
+>;
+
+export type SummaryTranslations = Partial<Record<Exclude<Locale, "zh">, string>>;
+
 export interface SignalItem {
   id: string;
   dateKey: string; // YYYY-MM-DD
+  title: string; // 当前语种标题
   titleZh: string;
   titleOrig: string;
   category: SignalCategory;
@@ -30,6 +48,7 @@ export interface SignalItem {
   sourceSublabel: string;
   sourceUrl: string;
   publishedAt: string;
+  translations?: SignalTranslations;
 }
 
 export interface DailyOverview {
@@ -38,6 +57,7 @@ export interface DailyOverview {
   selectedCount: number;
   estimatedReadMinutes: number;
   summaryNote: string;
+  summaryTranslations?: SummaryTranslations;
 }
 
 export interface IndieToolItem {
@@ -49,7 +69,7 @@ export interface IndieToolItem {
 }
 
 export interface RadarDataset {
-  overviews: DailyOverview[];
-  items: SignalItem[];
+  overviews: Array<Omit<DailyOverview, "summaryNote"> & { summaryNote: string }>;
+  items: Array<Omit<SignalItem, "title"> & { title?: string }>;
   tools: IndieToolItem[];
 }

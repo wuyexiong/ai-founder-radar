@@ -5,14 +5,24 @@
       "scannedCount": 342,
       "selectedCount": 10,
       "estimatedReadMinutes": 4,
-      "summaryNote": "今日海外重点风向：垂直行业合规小工具与 Shopify / Stripe 周边插件变现极稳；Reddit 上多人吐槽竞品订阅涨价，出现多个低门槛平替窗口。"
+      "summaryNote": "今日海外重点风向：垂直行业合规小工具与 Shopify / Stripe 周边插件变现极稳；Reddit 上多人吐槽竞品订阅涨价，出现多个低门槛平替窗口。",
+      "summaryTranslations": {
+        "zh-TW": "獨立開發者聚焦SEO長尾流量與高頻痛點打造微型SaaS，AI自動化與零伺服器成本方案成為變現新增長點。",
+        "en": "Indie developers are leveraging SEO long-tail traffic and niche pain points to build profitable micro-SaaS, with AI automation and zero-server tools driving new revenue.",
+        "ja": "個人開発者はSEOやニッチな課題解決型マイクロSaaSで収益化を加速させており、AI自動化やサーバーレスツールが新たなトレンドとなっています。"
+      }
     },
     {
       "dateKey": "2026-11-22",
       "scannedCount": 298,
       "selectedCount": 5,
       "estimatedReadMinutes": 3,
-      "summaryNote": "昨日焦点：单人开发的本地优先（Local-first）录音纪要 App 与程序化 SEO 工具站持续跑出高利润率。"
+      "summaryNote": "昨日焦点：单人开发的本地优先（Local-first）录音纪要 App 与程序化 SEO 工具站持续跑出高利润率。",
+      "summaryTranslations": {
+        "zh-TW": "獨立開發者週末開發小工具迅速變現，同時AI多媒體與連結巡檢等垂直場景需求持續火爆。",
+        "en": "Indie devs turn weekend builds into fast MRR, while demand for AI video generation and affiliate link monitoring tools surges.",
+        "ja": "週末開発のツールが素早く収益化し、AI動画生成やリンク監視などのニッチな需要が高まっています。"
+      }
     }
   ],
   "items": [
@@ -27,13 +37,55 @@
       "indieTakeaway": "不要做大而全的音视频剪辑台！切一个播客主每周必干 1 次的枯燥脏活，用免费在线小工具引流转付费订阅最稳。",
       "metricsBadge": "$14.2k MRR",
       "metricType": "revenue",
-      "tags": ["#MicroSaaS", "#SEO获客", "#创作者工具"],
+      "tags": [
+        "#MicroSaaS",
+        "#SEO获客",
+        "#创作者工具"
+      ],
       "score": 9.5,
       "isTopPick": true,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/microsaas",
       "sourceUrl": "https://www.reddit.com/r/microsaas/",
-      "publishedAt": "2026-11-23T00:05:00+08:00"
+      "publishedAt": "2026-11-23T00:05:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "單人開發的播客Shownotes生成小工具，靠長尾SEO穩居 $14.2k MRR",
+          "whatItIs": "幫獨立播客主把上傳的音訊在 60 秒內自動拆成帶時間戳章節、金句卡片與郵件通訊稿的輕量 Web 工具。",
+          "businessSignal": "定價 $19/$39 月付訂閱，淨利潤率 88%；獲客幾乎全靠 120 個「How to write podcast notes for X」程式化 SEO 免費工具落地頁。",
+          "indieTakeaway": "不要做大而全的音影片剪輯臺！切一個播客主每週必幹 1 次的枯燥髒活，用免費線上小工具引流轉付費訂閱最穩。",
+          "metricsBadge": "$14.2k MRR",
+          "tags": [
+            "#MicroSaaS",
+            "#SEO獲客",
+            "#創作者工具"
+          ]
+        },
+        "en": {
+          "title": "Podcast show notes generator hits $14.2k MRR via programmatic SEO",
+          "whatItIs": "A lightweight web tool turning audio into time-stamped notes and newsletters for solo podcasters in 60s.",
+          "businessSignal": "$19/$39 MRR at 88% margins; 120 programmatic SEO landing pages drive 100% of organic acquisition.",
+          "indieTakeaway": "Don't build a bloated editor. Target a weekly chore, use free web tools for top-of-funnel SEO, and gate the pro export.",
+          "metricsBadge": "$14.2k MRR",
+          "tags": [
+            "#MicroSaaS",
+            "#SEO",
+            "#CreatorEconomy"
+          ]
+        },
+        "ja": {
+          "title": "ポッドキャスト要約生成ツールがプログラマティックSEOで月商14.2kドルを達成",
+          "whatItIs": "音声を60秒でタイムスタンプ付き要約やメルマガ原稿に変換する、ソロポッドキャスト向けWebツール。",
+          "businessSignal": "月額19/39ドルで利益率88%。120個のSEO特化型ランディングページによるプログラム集客が成長の鍵。",
+          "indieTakeaway": "巨大な編集ツールは避ける。週1回の面倒な作業に特化し、無料ツールで集客して有料プランへ誘導しよう。",
+          "metricsBadge": "$14.2k MRR",
+          "tags": [
+            "#マイクロSaaS",
+            "#SEO集客",
+            "#クリエイター"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-02",
@@ -46,13 +98,55 @@
       "indieTakeaway": "海外自由职业者报税季极痛！视觉多模态模型成本已极低，针对细分财务软件（如 QuickBooks / Xero）做导入桥接器很容易收钱。",
       "metricsBadge": "▲ 642 PH #1",
       "metricType": "heat",
-      "tags": ["#ProductHunt榜首", "#一人公司", "#效率工具"],
+      "tags": [
+        "#ProductHunt榜首",
+        "#一人公司",
+        "#效率工具"
+      ],
       "score": 9.3,
       "isTopPick": true,
       "sourcePlatform": "producthunt",
       "sourceSublabel": "PH Daily #1",
       "sourceUrl": "https://www.producthunt.com/",
-      "publishedAt": "2026-11-22T23:20:00+08:00"
+      "publishedAt": "2026-11-22T23:20:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "SnapInvoice：截圖秒轉結構化報銷單與稅表，登頂 Product Hunt 日榜第一",
+          "whatItIs": "面向海外自由職業者與一人公司的選單欄小工具，快捷鍵截圖任何電子收據，自動識別稅號、幣種並同步記賬軟體。",
+          "businessSignal": "上線首日獲 640+ Upvotes；採用「免費體驗 20 張 + $9/月 或 $79 買斷（LTD）」雙軌定價，評論區大量獨立顧問直接下單買斷版。",
+          "indieTakeaway": "海外自由職業者報稅季極痛！視覺多模態模型成本已極低，針對細分財務軟體（如 QuickBooks / Xero）做匯入橋接器很容易收錢。",
+          "metricsBadge": "▲ 642 PH #1",
+          "tags": [
+            "#ProductHunt榜首",
+            "#一人公司",
+            "#效率工具"
+          ]
+        },
+        "en": {
+          "title": "SnapInvoice: Turn screenshots into tax-ready entries, hitting PH #1",
+          "whatItIs": "A macOS menu bar tool that auto-converts messy receipts and screenshots into clean QuickBooks data.",
+          "businessSignal": "Hit PH #1 with 640+ upvotes. Priced at $9/mo or $79 lifetime deal (LTD), with instant conversions from solo consultants.",
+          "indieTakeaway": "Tax prep is a massive pain for freelancers. Leveraging multimodal AI for niche accounting integrations is a quick path to revenue.",
+          "metricsBadge": "▲ 642 PH #1",
+          "tags": [
+            "#ProductHunt",
+            "#IndieHacker",
+            "#SaaS"
+          ]
+        },
+        "ja": {
+          "title": "SnapInvoice：スクショを即座に税務用CSVへ変換しPH 1位を獲得",
+          "whatItIs": "レシートやスクショを自動で税務データ化し、会計ソフトへ同期するメニューバーツール。",
+          "businessSignal": "公開初日に640+ UpvotesでPH 1位を獲得。月額$9または買切$79の価格設定で、フリーランスからの買い切り需要が爆発。",
+          "indieTakeaway": "フリーランスの確定申告は根強い痛み。ニッチな会計ソフト特化のAIブリッジツールはマネタイズしやすい。",
+          "metricsBadge": "▲ 642 PH #1",
+          "tags": [
+            "#ProductHunt",
+            "#個人開発",
+            "#SaaS"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-03",
@@ -65,13 +159,55 @@
       "indieTakeaway": "「反订阅疲劳（Anti-subscription）」是极好的切入点：挑一个成熟高频工具，砍掉 80% 企业臃肿功能，主推 Stripe 防爽约定金 + 固定低价。",
       "metricsBadge": "💬 186 痛点共鸣",
       "metricType": "pain",
-      "tags": ["#痛点挖矿", "#平替机会", "#本地服务SaaS"],
+      "tags": [
+        "#痛点挖矿",
+        "#平替机会",
+        "#本地服务SaaS"
+      ],
       "score": 9.2,
       "isTopPick": true,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/SomebodyMakeThis",
       "sourceUrl": "https://www.reddit.com/r/SomebodyMakeThis/",
-      "publishedAt": "2026-11-22T22:40:00+08:00"
+      "publishedAt": "2026-11-22T22:40:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "高贊求購：小商家苦於 Calendly 按人頭漲價，急求支援一次性買斷的輕量預約元件",
+          "whatItIs": "社群熱帖吐槽主流預約 SaaS 對小型家政、牙科診所、私教工作室按員工席位疊加收費太貴，且嵌入網頁載入緩慢。",
+          "businessSignal": "原帖獲 180+ 評論共鳴，超 30 位小店主明確表示願意花 $49~$99 一次性買斷或 $9/月不限席位，只要支援簡訊提醒與防爽約押金。",
+          "indieTakeaway": "「反訂閱疲勞（Anti-subscription）」是極好的切入點：挑一個成熟高頻工具，砍掉 80% 企業臃腫功能，主推 Stripe 防爽約定金 + 固定低價。",
+          "metricsBadge": "💬 186 痛點共鳴",
+          "tags": [
+            "#痛點挖礦",
+            "#平替機會",
+            "#本地服務SaaS"
+          ]
+        },
+        "en": {
+          "title": "Build a Lightweight Flat-Rate Booking Widget to Undercut Calendly's Per-Seat Tax",
+          "whatItIs": "Local service shops drowning in per-seat SaaS fees need a fast, flat-fee booking widget.",
+          "businessSignal": "186+ comments showing massive fatigue. 30+ owners demand a $49-$99 buyout or $9/mo flat with SMS reminders.",
+          "indieTakeaway": "Anti-subscription positioning wins: strip enterprise bloat, add Stripe anti-no-show deposits, and charge flat.",
+          "metricsBadge": "💬 186 Pain Points",
+          "tags": [
+            "#SaaSAlternative",
+            "#IndieHacker",
+            "#LocalBusiness"
+          ]
+        },
+        "ja": {
+          "title": "Calendlyの従量課金に疲れた小規模事業者向けの買い切り型予約ウィジェット",
+          "whatItIs": "高額な席数課金に苦しむ小規模店舗向けに、高速でシンプルな予約ツールを提供します。",
+          "businessSignal": "186件以上の共鳴。SMS通知とドタキャン防止付きの49〜99ドル買い切りを30名以上が熱望。",
+          "indieTakeaway": "「脱サブスク」が最強の武器：機能を80%削り、Stripe決済と一律低価格でニッチを狙え。",
+          "metricsBadge": "💬 186 痛点共鳴",
+          "tags": [
+            "#個人開発",
+            "#SaaS",
+            "#アイデア"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-04",
@@ -84,13 +220,55 @@
       "indieTakeaway": "「帮老板直接多赚钱/挽回损失」的 B2B 插件永远最好卖！因为客户能算出精确 ROI，只要挽回两单就值回全年订阅费。",
       "metricsBadge": "$8.9k MRR",
       "metricType": "revenue",
-      "tags": ["#Stripe生态", "#B2B变现", "#高留存"],
+      "tags": [
+        "#Stripe生态",
+        "#B2B变现",
+        "#高留存"
+      ],
       "score": 9.1,
       "isTopPick": true,
       "sourcePlatform": "trustmrr",
       "sourceSublabel": "TrustMRR 飙升榜",
       "sourceUrl": "https://trustmrr.com/",
-      "publishedAt": "2026-11-22T21:50:00+08:00"
+      "publishedAt": "2026-11-22T21:50:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "ChurnRescue：專門挽回 Stripe 信用卡扣款失敗訂單的自動化小外掛，月入 $8.9k",
+          "whatItIs": "一鍵連線 Stripe Webhook，當訂閱使用者的信用卡過期或餘額不足扣款失敗時，自動按最優時間視窗傳送個性化催付提醒。",
+          "businessSignal": "TrustMRR 實名驗證 $8,940 MRR，近 30 天環比增長 +24%；採用「基礎月費 $29 + 挽回金額 5% 抽成」模式，客戶幾乎零流失。",
+          "indieTakeaway": "「幫老闆直接多賺錢/挽回損失」的 B2B 外掛永遠最好賣！因為客戶能算出精確 ROI，只要挽回兩單就值回全年訂閱費。",
+          "metricsBadge": "$8.9k MRR",
+          "tags": [
+            "#Stripe生態",
+            "#B2B變現",
+            "#高留存"
+          ]
+        },
+        "en": {
+          "title": "Automated Stripe failed-payment recovery emails driving $8.9k MRR",
+          "whatItIs": "Connects to Stripe to automatically send smart, personalized dunning emails for failed subscriptions.",
+          "businessSignal": "Verified $8,940 MRR (+24% MoM); pricing uses $29/mo base + 5% recovered revenue with near-zero churn.",
+          "indieTakeaway": "B2B tools tied directly to recovered revenue sell themselves because customers instantly calculate ROI.",
+          "metricsBadge": "$8.9k MRR",
+          "tags": [
+            "#Stripe",
+            "#B2BMonetization",
+            "#HighRetention"
+          ]
+        },
+        "ja": {
+          "title": "Stripeの決済失敗を自動リカバリーし月商$8.9kを達成",
+          "whatItIs": "Stripeと連携し、クレジットカードの残高不足などで失敗した請求の回収を自動化するツール。",
+          "businessSignal": "月商$8,940（前月比+24%）。基本月額$29＋回収額の5%手数料モデルで、解約率がほぼゼロ。",
+          "indieTakeaway": "「売上直結型」のB2Bツールは投資対効果が明快なため、個人開発者でも非常に売りやすい。",
+          "metricsBadge": "$8.9k MRR",
+          "tags": [
+            "#Stripeエコシステム",
+            "#B2Bマネタイズ",
+            "#高リテンション"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-05",
@@ -103,13 +281,55 @@
       "indieTakeaway": "本地端侧推理（WebGPU / WebAssembly）解决了独立开发者最怕的「白嫖党把 GPU API 账单刷爆」难题，非常适合做高频图片/音频工具站。",
       "metricsBadge": "▲ 318 HN 热议",
       "metricType": "heat",
-      "tags": ["#ShowHN", "#零算力成本", "#跨境电商工具"],
+      "tags": [
+        "#ShowHN",
+        "#零算力成本",
+        "#跨境电商工具"
+      ],
       "score": 8.9,
       "isTopPick": true,
       "sourcePlatform": "hackernews",
       "sourceSublabel": "Show HN",
       "sourceUrl": "https://news.ycombinator.com/show",
-      "publishedAt": "2026-11-22T20:15:00+08:00"
+      "publishedAt": "2026-11-22T20:15:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "Show HN：用純瀏覽器 WebGPU 跑的批次證件照/商品白底摳圖工具，零伺服器成本",
+          "whatItIs": "直接在使用者本地瀏覽器內呼叫輕量化視覺模型批次處理電商商品白底圖與陰影合成，照片完全不上傳雲端。",
+          "businessSignal": "Hacker News 收穫 318 贊；因為推理算力全跑在使用者自己顯示卡上，開發者毛利率接近 100%，靠匯出高畫質批次 ZIP 包與預設光影模板收費 $12/月。",
+          "indieTakeaway": "本地端側推理（WebGPU / WebAssembly）解決了獨立開發者最怕的「白嫖黨把 GPU API 賬單刷爆」難題，非常適合做高頻圖片/音訊工具站。",
+          "metricsBadge": "▲ 318 HN 熱議",
+          "tags": [
+            "#ShowHN",
+            "#零算力成本",
+            "#跨境電商工具"
+          ]
+        },
+        "en": {
+          "title": "Zero-Server WebGPU Product Photo Background Studio Hit $12/mo",
+          "whatItIs": "Local-first browser AI running batch e-commerce background removal on user GPUs with zero server costs.",
+          "businessSignal": "Hit 318 upvotes on HN; 100% gross margins since inference runs locally. Monetizes via $12/mo for batch export & templates.",
+          "indieTakeaway": "Client-side WebGPU completely eliminates high GPU API cloud bills, making media utility sites infinitely scalable.",
+          "metricsBadge": "▲ 318 HN",
+          "tags": [
+            "#ShowHN",
+            "#WebGPU",
+            "#Bootstrapped"
+          ]
+        },
+        "ja": {
+          "title": "サーバー代ゼロ！WebGPUで動くブラウザ完結のEC商品画像生成ツール",
+          "whatItIs": "ユーザーのブラウザ上でローカルAIを動かし、サーバーコストゼロでEC商品の白底・影付けをバッチ処理。",
+          "businessSignal": "HNで318票獲得。推論はユーザーのGPUなので原価ほぼゼロ。一括ZIP出力やテンプレートで月額12ドルでマネタイズ。",
+          "indieTakeaway": "WebGPUによる完全クライアント側処理で「API乱用によるサーバー破産」を防ぐ、高頻度ツール開発の極意。",
+          "metricsBadge": "▲ 318 HN",
+          "tags": [
+            "#ShowHN",
+            "#WebGPU",
+            "#個人開発"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-06",
@@ -122,13 +342,55 @@
       "indieTakeaway": "移动端工具 App 出海「颜值即获客」！只要界面在书桌实拍视频里有极强视觉辨识度，就能零买量靠 TikTok / Reels 自然流跑通内购。",
       "metricsBadge": "$22k/mo IAP",
       "metricType": "revenue",
-      "tags": ["#iOS出海", "#TikTok自然流", "#极简App"],
-      "score": 9.0,
+      "tags": [
+        "#iOS出海",
+        "#TikTok自然流",
+        "#极简App"
+      ],
+      "score": 9,
       "isTopPick": true,
       "sourcePlatform": "appstore",
       "sourceSublabel": "US Productivity 异动",
       "sourceUrl": "https://www.reddit.com/r/AppBusiness/",
-      "publishedAt": "2026-11-22T19:30:00+08:00"
+      "publishedAt": "2026-11-22T19:30:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "美區 App Store 效率榜黑馬：極簡 ADHD 視覺倒計時器，單靠 TikTok 短影片冷啟動破 $22k/月",
+          "whatItIs": "專為注意力分散人群（ADHD）設計的極簡全屏流體沙漏與桌面靈動島倒計時 App，功能極度剋制，只有開始專注與震動提醒。",
+          "businessSignal": "年訂閱 $29.99（提供 3 天免費試用），冷啟動期每天發 1 條 15 秒書桌延時攝影短影片，單條爆款帶來 4 萬自然下載。",
+          "indieTakeaway": "移動端工具 App 出海「顏值即獲客」！只要介面在書桌實拍影片裡有極強視覺辨識度，就能零買量靠 TikTok / Reels 自然流跑通內購。",
+          "metricsBadge": "$22k/mo IAP",
+          "tags": [
+            "#iOS出海",
+            "#TikTok自然流",
+            "#極簡App"
+          ]
+        },
+        "en": {
+          "title": "Minimalist ADHD Focus Timer Crosses $22k MRR via Organic TikTok Reels",
+          "whatItIs": "A minimalist full-screen visual timer and fluid hourglass for ADHD users to stay focused.",
+          "businessSignal": "$29.99/yr subscription. Daily 15s desk timelapse videos generated 40k organic downloads per hit.",
+          "indieTakeaway": "Extreme aesthetic design is acquisition. Make your UI pop in physical desk videos for zero-ad TikTok growth.",
+          "metricsBadge": "$22k/mo IAP",
+          "tags": [
+            "#iOS",
+            "#TikTokGrowth",
+            "#MinimalistApp"
+          ]
+        },
+        "ja": {
+          "title": "ADHD向け極簡ビジュアルタイマーがTikTok自然流入で月商$22kを突破",
+          "whatItIs": "注意散漫な人やADHD向けに設計された、極限までシンプルな全屏流体砂時計アプリ。",
+          "businessSignal": "年間$29.99のサブスク。15秒のデスクタイムラプス毎日投稿で1本が4万DLを記録。",
+          "indieTakeaway": "モバイルツールは「美しさが最大の集客」。映えるUIでTikTokのオーガニック流入を狙う。",
+          "metricsBadge": "$22k/月 IAP",
+          "tags": [
+            "#iOS開発",
+            "#TikTok集客",
+            "#個人開発"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-07",
@@ -141,13 +403,55 @@
       "indieTakeaway": "把重型企业软件里最常用的 1 个监控功能单拎出来卖 1/10 的价格，目标客群（跨境电商卖家）离钱近、付费极其爽快。",
       "metricsBadge": "💬 74 卖家求购",
       "metricType": "pain",
-      "tags": ["#Shopify生态", "#竞品监控", "#痛点挖矿"],
+      "tags": [
+        "#Shopify生态",
+        "#竞品监控",
+        "#痛点挖矿"
+      ],
       "score": 8.7,
       "isTopPick": false,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/SaaS",
       "sourceUrl": "https://www.reddit.com/r/SaaS/",
-      "publishedAt": "2026-11-22T18:10:00+08:00"
+      "publishedAt": "2026-11-22T18:10:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "跨境賣家痛點：急需能自動監控競品 Shopify 店鋪上新與價格變動的輕量郵件日報",
+          "whatItIs": "獨立站賣家在社群求助：市面競品情報軟體動輒 $199/月起，其實只想盯緊同行 5~10 個獨立站每天改了什麼標題、上了什麼新款。",
+          "businessSignal": "貼內 70+ 同行跟帖求同款；Shopify 店鋪預設暴露公開 `/products.json` 結構，技術採集門檻極低，非常適合包裝成 $15~$29/月監控小 SaaS。",
+          "indieTakeaway": "把重型企業軟體裡最常用的 1 個監控功能單拎出來賣 1/10 的價格，目標客群（跨境電商賣家）離錢近、付費極其爽快。",
+          "metricsBadge": "💬 74 賣家求購",
+          "tags": [
+            "#Shopify生態",
+            "#競品監控",
+            "#痛點挖礦"
+          ]
+        },
+        "en": {
+          "title": "Shopify Competitor Tracker: Daily Email Alerts for Price & Product Drops",
+          "whatItIs": "Built for e-com sellers needing a lightweight tool to track 5-10 rival Shopify stores.",
+          "businessSignal": "70+ comments begging for this; exploits free public `/products.json` for a $15-$29/mo micro-SaaS.",
+          "indieTakeaway": "Strip one core feature from bloated tools and sell at 1/10th price to high-intent sellers.",
+          "metricsBadge": "💬 74 Seller Demand",
+          "tags": [
+            "#Shopify",
+            "#MicroSaaS",
+            "#IndieHacker"
+          ]
+        },
+        "ja": {
+          "title": "Shopify競品の価格改定・上新を毎日通知するメール監視ツール",
+          "whatItIs": "ECセラー向けに、ライバルのShopifyストアの変更を毎日メールで通知するツール。",
+          "businessSignal": "公開APIを活用し、月15〜29ドルのマイクロSaaSとして即座にマネタイズ可能。強い需要あり。",
+          "indieTakeaway": "重い競合ツールの主要機能を一つだけ切り出し、予算の限られたECセラーに安価で提供する。",
+          "metricsBadge": "💬 74 要望コメント",
+          "tags": [
+            "#Shopify",
+            "#マイクロSaaS",
+            "#個人開発"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-08",
@@ -160,13 +464,55 @@
       "indieTakeaway": "可以直接拿来强化我们自己雷达站的正文深挖能力，或者针对特定垂直站（如房产、招聘、外贸黄页）封装专用数据清洗 API。",
       "metricsBadge": "⭐ +1.4k 今日",
       "metricType": "heat",
-      "tags": ["#GitHub飙升", "#AI基建", "#MIT开源"],
+      "tags": [
+        "#GitHub飙升",
+        "#AI基建",
+        "#MIT开源"
+      ],
       "score": 8.4,
       "isTopPick": false,
       "sourcePlatform": "github",
       "sourceSublabel": "GitHub Trending",
       "sourceUrl": "https://github.com/trending",
-      "publishedAt": "2026-11-22T16:45:00+08:00"
+      "publishedAt": "2026-11-22T16:45:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "GitHub 今日飆升：開源網頁轉結構化 Markdown 提取引擎，24 小時狂攬 1,400 Star",
+          "whatItIs": "專門解決 AI Agent 讀網頁時被廣告欄、導航選單汙染上下文的輕量開源清洗庫，支援一鍵部署為 Cloudflare Worker 介面。",
+          "businessSignal": "MIT 開源協議；同類託管 API 服務（如 Firecrawl / Jina Reader）在開發者市場需求極旺，既是極佳底層元件也可包裝垂直行業採集 API。",
+          "indieTakeaway": "可以直接拿來強化我們自己雷達站的正文深挖能力，或者針對特定垂直站（如房產、招聘、外貿黃頁）封裝專用資料清洗 API。",
+          "metricsBadge": "⭐ +1.4k 今日",
+          "tags": [
+            "#GitHub飆升",
+            "#AI基建",
+            "#MIT開源"
+          ]
+        },
+        "en": {
+          "title": "Scrapemark hits 1.4k Stars: Open-source LLM-ready web to Markdown extractor",
+          "whatItIs": "Clean web parser for AI agents removing boilerplate, deploying instantly on Cloudflare Workers.",
+          "businessSignal": "MIT license; high developer demand for data cleaning APIs like Firecrawl to power AI workflows.",
+          "indieTakeaway": "Package this open-source core into niche vertical scrapers like real estate or job boards.",
+          "metricsBadge": "⭐ +1.4k Stars",
+          "tags": [
+            "#OpenSource",
+            "#AIInfrastructure",
+            "#WebScraping"
+          ]
+        },
+        "ja": {
+          "title": "Scrapemark：AI向け軽量Web-Markdown変換エンジンが24hで1.4kスタ",
+          "whatItIs": "AIエージェントのノイズを排除する、Cloudflare Worker対応のWeb抽出ライブラリ。",
+          "businessSignal": "MITライセンス。類似APIの需要が急増中。垂直特化型スクレイピングAPIへの展開に最適。",
+          "indieTakeaway": "不動産や求人など特定ニッチのデータ抽出APIとして再パッケージ化し、SaaS化を狙う。",
+          "metricsBadge": "⭐ 1.4k スタ",
+          "tags": [
+            "#オープンソース",
+            "#AI開発",
+            "#Webスクレイピング"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-09",
@@ -179,13 +525,55 @@
       "indieTakeaway": "浏览器插件是验证出海想法最快的载体：开发周期不到一周，自带 Chrome 商店精准搜索流量，维护成本极低。",
       "metricsBadge": "$3.6k MRR",
       "metricType": "revenue",
-      "tags": ["#Chrome插件", "#外贸工具", "#被动流量"],
+      "tags": [
+        "#Chrome插件",
+        "#外贸工具",
+        "#被动流量"
+      ],
       "score": 8.6,
       "isTopPick": false,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/SideProject",
       "sourceUrl": "https://www.reddit.com/r/SideProject/",
-      "publishedAt": "2026-11-22T15:20:00+08:00"
+      "publishedAt": "2026-11-22T15:20:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "Chrome 外掛復盤：給 Gmail 加一個「客戶時區與最佳傳送時間提示條」，穩定月入 $3.6k",
+          "whatItIs": "在寫外貿開發信或跨國協作郵件時，自動根據收件人域名/簽名推斷對方所在城市當前當地時間與節假日，避免半夜發信沉底。",
+          "businessSignal": "Chrome 應用商店自然搜尋每天帶來 80+ 安裝，免費版限每日 5 封，Pro 版 $6/月，靠外貿銷售與遠端團隊口碑傳播。",
+          "indieTakeaway": "瀏覽器外掛是驗證出海想法最快的載體：開發週期不到一週，自帶 Chrome 商店精準搜尋流量，維護成本極低。",
+          "metricsBadge": "$3.6k MRR",
+          "tags": [
+            "#Chrome外掛",
+            "#外貿工具",
+            "#被動流量"
+          ]
+        },
+        "en": {
+          "title": "Gmail Timezone Extension Hits $3.6k MRR in a Week",
+          "whatItIs": "Adds a local time & holiday hint bar to Gmail for cold-emailers and remote teams.",
+          "businessSignal": "Chrome Web Store brings 80+ installs/day. Free tier + $6/mo Pro. Word-of-mouth growth.",
+          "indieTakeaway": "Browser extensions are the fastest MVP vehicle: <1 week build, organic store search, low maintenance.",
+          "metricsBadge": "$3.6k MRR",
+          "tags": [
+            "#ChromeExtension",
+            "#ColdEmail",
+            "#OrganicTraffic"
+          ]
+        },
+        "ja": {
+          "title": "Gmail時区表示Chrome拡張がMRR $3.6kを達成",
+          "whatItIs": "リモートチームや営業向けに、Gmail上で相手の現地時間と休日を表示する拡張機能。",
+          "businessSignal": "ストア検索で毎日80+DL。無料枠＋月額$6のPro版。口コミで自然成長。",
+          "indieTakeaway": "拡張機能は最短の検証手段：1週間で開発でき、ストアの自然検索流入と低保守費が強み。",
+          "metricsBadge": "$3.6k MRR",
+          "tags": [
+            "#Chrome拡張",
+            "#海外営業",
+            "#自然流入"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261123-10",
@@ -198,13 +586,55 @@
       "indieTakeaway": "卖铲子给其他独立开发者和出海团队（获客、SEO 外链、着陆页转化）客单价高且需求极其刚性。",
       "metricsBadge": "▲ 412 Upvotes",
       "metricType": "heat",
-      "tags": ["#增长获客", "#卖铲子", "#SaaS首发"],
+      "tags": [
+        "#增长获客",
+        "#卖铲子",
+        "#SaaS首发"
+      ],
       "score": 8.5,
       "isTopPick": false,
       "sourcePlatform": "producthunt",
       "sourceSublabel": "PH Top 5",
       "sourceUrl": "https://www.producthunt.com/",
-      "publishedAt": "2026-11-22T14:10:00+08:00"
+      "publishedAt": "2026-11-22T14:10:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "ReplyGuy Radar：幫獨立開發者自動盯緊 Reddit/X 上潛在客戶提問的獲客助手",
+          "whatItIs": "輸入你的產品定位，系統 24 小時掃描社交論壇裡「求推薦某類工具」的新帖，提示你第一時間去真實回帖截流種子使用者。",
+          "businessSignal": "Product Hunt 獲 410+ 贊；定價 $29/月，直擊獨立開發者「寫程式碼容易、找第一批付費客戶難」的最大痛點。",
+          "indieTakeaway": "賣鏟子給其他獨立開發者和出海團隊（獲客、SEO 外鏈、著陸頁轉化）客單價高且需求極其剛性。",
+          "metricsBadge": "▲ 412 Upvotes",
+          "tags": [
+            "#增長獲客",
+            "#賣鏟子",
+            "#SaaS首發"
+          ]
+        },
+        "en": {
+          "title": "ReplyGuy Radar: Real-time Reddit & HN lead alerts for solo founders",
+          "whatItIs": "Monitors social forums 24/7 for niche tool recommendations to capture seed users early.",
+          "businessSignal": "Hit 410+ upvotes on Product Hunt; priced at $29/mo solving early-stage customer acquisition.",
+          "indieTakeaway": "Sell shovels to indie hackers and global SaaS teams—high ticket size and urgent demand.",
+          "metricsBadge": "▲ 412 Upvotes",
+          "tags": [
+            "#GrowthHacking",
+            "#B2BSaaS",
+            "#IndieHacker"
+          ]
+        },
+        "ja": {
+          "title": "ReplyGuy Radar: Reddit/HNで潜在顧客の投稿を自動検知",
+          "whatItIs": "24時間ソーシャルを監視し、自社ツールに合う質問を検知して最速で返信を促す。",
+          "businessSignal": "PHで410票獲得、月額29ドル。最初の顧客獲得に悩む開発者の痛みを直撃。",
+          "indieTakeaway": "開発者向けの「ツルハシ販売」は単価が高く、常に枯れない強い需要がある。",
+          "metricsBadge": "▲ 412 Upvotes",
+          "tags": [
+            "#グロース",
+            "#B2BSaaS",
+            "#個人開発"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261122-01",
@@ -217,13 +647,55 @@
       "indieTakeaway": "低频高价值场景（审合同、改简历、申诉信）不要强推包月订阅！设计一个 $5~$15 的「单次救急通行证」转化率能翻三倍。",
       "metricsBadge": "$6.8k MRR",
       "metricType": "revenue",
-      "tags": ["#AI垂直应用", "#单次付费设计", "#自由职业"],
+      "tags": [
+        "#AI垂直应用",
+        "#单次付费设计",
+        "#自由职业"
+      ],
       "score": 9.2,
       "isTopPick": true,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/indiehackers",
       "sourceUrl": "https://www.reddit.com/r/indiehackers/",
-      "publishedAt": "2026-11-22T09:30:00+08:00"
+      "publishedAt": "2026-11-22T09:30:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "兩個週末搓出來的合同風險紅線標定器，靠律師與自由譯者圈子做到 $6.8k MRR",
+          "whatItIs": "自由職業者簽約前把甲方的英文 PDF 合同拖進去，10 秒標出「無限期免費修改」「智慧財產權霸王條款」「賬期超 60 天」並提供溫和修改話術。",
+          "businessSignal": "提供單次救急包（$9 審一份合同）與 $19/月無限包；單次按需付費轉化率高達 7.2%，解決了低頻剛需工具不好賣月卡的問題。",
+          "indieTakeaway": "低頻高價值場景（審合同、改簡歷、申訴信）不要強推包月訂閱！設計一個 $5~$15 的「單次救急通行證」轉化率能翻三倍。",
+          "metricsBadge": "$6.8k MRR",
+          "tags": [
+            "#AI垂直應用",
+            "#單次付費設計",
+            "#自由職業"
+          ]
+        },
+        "en": {
+          "title": "Built a freelance contract red-flag scanner in 2 weekends — $6.8k MRR",
+          "whatItIs": "Instantly flags predatory terms in PDFs for freelancers and suggests fair counter-clauses.",
+          "businessSignal": "Offers $9 emergency single scans and a $19/mo unlimited plan; 7.2% conversion on the one-off tier.",
+          "indieTakeaway": "For infrequent high-value tasks, never force monthly subs. A $5-$15 one-off pass triples conversion.",
+          "metricsBadge": "$6.8k MRR",
+          "tags": [
+            "#MicroSaaS",
+            "#AIApps",
+            "#Freelance"
+          ]
+        },
+        "ja": {
+          "title": "週末2日で作った契約書リスクチェッカー、月商$6.8kを達成",
+          "whatItIs": "フリーランス向けに英文PDF契約書の不利な条項を10秒で検出し、修正案を提示するツール。",
+          "businessSignal": "$9の都度払いと$19/月のサブスクを用意。単発プランのコンバージョン率が7.2%と高水準。",
+          "indieTakeaway": "利用頻度が低い高単価の課題には、月額縛りより$5〜$15の都度払いパスがコンバージョンを3倍にする。",
+          "metricsBadge": "$6.8k MRR",
+          "tags": [
+            "#マイクロSaaS",
+            "#AI活用",
+            "#フリーランス"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261122-02",
@@ -236,13 +708,55 @@
       "indieTakeaway": "围绕海外流行的 Build in Public（公开构建）工作流做自动化提效工具，非常容易在 X 上形成自带水印的病毒传播。",
       "metricsBadge": "▲ 520 PH #2",
       "metricType": "heat",
-      "tags": ["#BuildInPublic", "#视频自动化", "#开发者营销"],
+      "tags": [
+        "#BuildInPublic",
+        "#视频自动化",
+        "#开发者营销"
+      ],
       "score": 8.8,
       "isTopPick": true,
       "sourcePlatform": "producthunt",
       "sourceSublabel": "PH Daily #2",
       "sourceUrl": "https://www.producthunt.com/",
-      "publishedAt": "2026-11-22T08:00:00+08:00"
+      "publishedAt": "2026-11-22T08:00:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "ChangelogVideo：把枯燥的 Git 更新日誌一鍵生成 30 秒產品演示動圖影片",
+          "whatItIs": "讀取團隊本週合併的 PR 描述與介面截圖，自動套用絲滑縮放動效模板，輸出可直接發 X / LinkedIn 的產品更新短影片。",
+          "businessSignal": "Product Hunt 日榜第 2（520 贊）；定價 $29/月，主攻「想做 Build in Public 但懶得剪影片」的技術創始人。",
+          "indieTakeaway": "圍繞海外流行的 Build in Public（公開構建）工作流做自動化提效工具，非常容易在 X 上形成自帶水印的病毒傳播。",
+          "metricsBadge": "▲ 520 PH #2",
+          "tags": [
+            "#BuildInPublic",
+            "#影片自動化",
+            "#開發者營銷"
+          ]
+        },
+        "en": {
+          "title": "ChangelogVideo: Turn GitHub PRs into slick 30s launch videos",
+          "whatItIs": "Turns merged GitHub PRs and screenshots into polished product update videos for X & LinkedIn.",
+          "businessSignal": "Hit Product Hunt #2 with 520 upvotes. Priced at $29/mo, targeting tech founders doing Build in Public.",
+          "indieTakeaway": "Build automated workflow tools for the Build in Public crowd to drive organic viral growth on X.",
+          "metricsBadge": "▲ 520 PH #2",
+          "tags": [
+            "#BuildInPublic",
+            "#VideoAutomation",
+            "#DevMarketing"
+          ]
+        },
+        "ja": {
+          "title": "GitHubのPRを30秒のプロダクト動画に自動変換するツール",
+          "whatItIs": "PRとスクリーンショットからXやLinkedIn用の洗練された製品更新動画を自動生成します。",
+          "businessSignal": "Product Huntで2位（520票）。月額29ドルで「Build in Public」実践中の開発者を狙う。",
+          "indieTakeaway": "公開開発トレンド向けの自動化ツールは、Xでのバイラル拡散を狙うのに最適です。",
+          "metricsBadge": "▲ 520 PH #2",
+          "tags": [
+            "#BuildInPublic",
+            "#動画自動化",
+            "#個人開発"
+          ]
+        }
+      }
     },
     {
       "id": "sig-20261122-03",
@@ -255,13 +769,55 @@
       "indieTakeaway": "极其典型的「帮创作者捡回地上漏掉的钱」刚需小工具，API 现成、逻辑清晰，几乎没有大厂会专门做这么细的切口。",
       "metricsBadge": "💬 142 痛点高赞",
       "metricType": "pain",
-      "tags": ["#Affiliate生态", "#YouTube工具", "#捡钱切口"],
+      "tags": [
+        "#Affiliate生态",
+        "#YouTube工具",
+        "#捡钱切口"
+      ],
       "score": 9.1,
       "isTopPick": true,
       "sourcePlatform": "reddit",
       "sourceSublabel": "r/SomebodyMakeThis",
       "sourceUrl": "https://www.reddit.com/r/SomebodyMakeThis/",
-      "publishedAt": "2026-11-21T23:15:00+08:00"
+      "publishedAt": "2026-11-21T23:15:00+08:00",
+      "translations": {
+        "zh-TW": {
+          "title": "高票痛點：YouTube 創作者求一個能自動檢測往期影片描述裡「失效帶貨連結」的巡檢工具",
+          "whatItIs": "擁有幾百條長青影片的博主發現，兩年前爆款影片簡介裡的亞馬遜商品下架或推廣連結 404，每年白白流失大量被動返佣。",
+          "businessSignal": "140+ 創作者點贊求推薦；接入 YouTube Data API 定期巡檢死鏈並給出同款高傭替換建議，按頻道影片量階梯收費 $15~$49/月。",
+          "indieTakeaway": "極其典型的「幫創作者撿回地上漏掉的錢」剛需小工具，API 現成、邏輯清晰，幾乎沒有大廠會專門做這麼細的切口。",
+          "metricsBadge": "💬 142 痛點高贊",
+          "tags": [
+            "#Affiliate生態",
+            "#YouTube工具",
+            "#撿錢切口"
+          ]
+        },
+        "en": {
+          "title": "Fix dead YouTube affiliate links and recover lost commissions automatically",
+          "whatItIs": "Finds broken Amazon and SaaS links in old YouTube descriptions to prevent lost passive income.",
+          "businessSignal": "140+ creator votes. Uses YouTube API to audit dead links and suggest replacements at $15-$49/mo.",
+          "indieTakeaway": "A classic 'recover lost money' niche tool with ready APIs and zero enterprise competition.",
+          "metricsBadge": "💬 142 Pain Votes",
+          "tags": [
+            "#AffiliateMarketing",
+            "#YouTubeTools",
+            "#SaaS"
+          ]
+        },
+        "ja": {
+          "title": "YouTubeの古い動画説明欄のリンク切れを検知し、収益ロスを防ぐSaaS",
+          "whatItIs": "過去の動画内にあるAmazonやSaaSのアフィリエイトリンク切れを自動検出。",
+          "businessSignal": "140票超の強い痛点。APIで死活監視し代替案を提案、月額$15〜$49で提供。",
+          "indieTakeaway": "「放置された機会損失を回収する」王道の個人開発向けニッチSaaS。",
+          "metricsBadge": "💬 142 痛点高評価",
+          "tags": [
+            "#アフィリエイト",
+            "#YouTubeツール",
+            "#個人開発"
+          ]
+        }
+      }
     }
   ],
   "tools": [

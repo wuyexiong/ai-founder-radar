@@ -29,6 +29,16 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  html:lang(zh-TW) {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang TC",
+      "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+
+  html:lang(ja) {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+      "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+  }
+
   body {
     background-color: var(--bg-page);
     color: var(--text-primary);

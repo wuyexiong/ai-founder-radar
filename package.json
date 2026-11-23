@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "radar:sync": "node --import tsx --use-env-proxy scripts/sync-radar.ts",
+    "radar:backfill": "node --import tsx --use-env-proxy scripts/sync-radar.ts --backfill-only",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -18,6 +19,7 @@
     "drizzle-orm": "^0.41.0",
     "lucide-react": "^0.511.0",
     "next": "^15.3.2",
+    "opencc-js": "^1.4.2",
     "postgres": "^3.4.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
