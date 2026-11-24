@@ -6,9 +6,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Bookmark,
   Calendar,
+  Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Clock,
   Compass,
@@ -17,9 +16,9 @@ import {
   Globe,
   Layers,
   Mail,
+  Monitor,
   Moon,
   Radar,
-  RotateCcw,
   Rss,
   Search,
   Sparkles,
@@ -42,7 +41,19 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { trackRadarEvent } from "@/lib/analytics";
 import { getTopicCopy } from "@/lib/seo-taxonomy";
 import type { RadarPagePayload } from "@/lib/signals-repo";
-import { buildTrackedOutboundUrl, cn } from "@/lib/utils";
+import {
+  getNextThemeMode,
+  LEGACY_THEME_STORAGE_KEY,
+  normalizeThemeMode,
+  resolveEffectiveDark,
+  THEME_STORAGE_KEY,
+  type ThemeMode,
+} from "@/lib/theme";
+import {
+  buildTrackedOutboundUrl,
+  cn,
+  formatHeaderArchiveDate,
+} from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -63,8 +74,6 @@ const PLATFORM_ORDER: SourcePlatform[] = [
 ];
 
 const COLLAPSED_TAG_LIMIT = 10;
-const THEME_STORAGE_KEY = "afr-theme";
-const LEGACY_THEME_STORAGE_KEY = "indieradar-theme";
 const SAVED_ITEMS_STORAGE_KEY = "afr-saved-items";
 const LEGACY_BOOKMARKS_STORAGE_KEY = "indieradar-bookmarks";
 
@@ -157,21 +166,24 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
   const [tagsExpanded, setTagsExpanded] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [savedSnapshots, setSavedSnapshots] = useState<
     Record<string, SignalItem>
   >({});
-  const [isDark, setIsDark] = useState(false);
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
+  const [themeHydrated, setThemeHydrated] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const langPickerRef = useRef<HTMLDivElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const routeKey = hub
-    ? `${hub.kind}:${hub.slug}`
-    : `${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
+    ? `${locale}:${hub.kind}:${hub.slug}`
+    : `${locale}:${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
   const prevRouteKeyRef = useRef(routeKey);
 
-  // 客户端跨专题/日期软路由切换时重置筛选状态与乐观日期
+  // 客户端跨专题/日期/语种软路由切换时重置筛选状态与下拉面板
   useEffect(() => {
     if (prevRouteKeyRef.current !== routeKey) {
       prevRouteKeyRef.current = routeKey;
@@ -180,6 +192,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       setActiveTag(null);
       setSearchQuery("");
       setDatePickerOpen(false);
+      setLangMenuOpen(false);
       setOptimisticDate(null);
     }
   }, [routeKey, hub, isArchiveRoute]);
@@ -206,18 +219,73 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     };
   }, [datePickerOpen]);
 
-  // 初始化主题与跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
+  // 点击外部或按 Escape 收起语言选择列表
   useEffect(() => {
-    const savedTheme =
-      localStorage.getItem(THEME_STORAGE_KEY) ||
-      localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
-    const prefersDark =
-      savedTheme === "dark" ||
-      (!savedTheme &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches);
-    setIsDark(prefersDark);
-    document.documentElement.classList.toggle("dark", prefersDark);
+    if (!langMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (
+        langPickerRef.current &&
+        !langPickerRef.current.contains(e.target as Node)
+      ) {
+        setLangMenuOpen(false);
+      }
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLangMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [langMenuOpen]);
 
+  // 初始化主题模式（默认跟随电脑 system，兼容旧版存储键无缝迁移）
+  useEffect(() => {
+    try {
+      const savedTheme =
+        localStorage.getItem(THEME_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+      const initialMode = normalizeThemeMode(savedTheme);
+      setThemeMode(initialMode);
+      setThemeHydrated(true);
+      const prefersDark = window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches;
+      document.documentElement.classList.toggle(
+        "dark",
+        resolveEffectiveDark(initialMode, prefersDark)
+      );
+    } catch {
+      setThemeHydrated(true);
+    }
+  }, []);
+
+  // 当主题处于「跟随电脑」模式时实时监听系统浅色/深色切换
+  useEffect(() => {
+    if (!themeHydrated) return;
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const syncTheme = () => {
+      document.documentElement.classList.toggle(
+        "dark",
+        resolveEffectiveDark(themeMode, mql.matches)
+      );
+    };
+    syncTheme();
+
+    if (themeMode !== "system") return;
+
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", syncTheme);
+      return () => mql.removeEventListener("change", syncTheme);
+    }
+    mql.addListener(syncTheme);
+    return () => mql.removeListener(syncTheme);
+  }, [themeMode, themeHydrated]);
+
+  // 初始化跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
+  useEffect(() => {
     try {
       const nextMap: Record<string, SignalItem> = {};
       const rawSnapshots = JSON.parse(
@@ -282,12 +350,22 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const toggleTheme = () => {
-    const next = !isDark;
-    setIsDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
-    localStorage.setItem(LEGACY_THEME_STORAGE_KEY, next ? "dark" : "light");
+  const selectThemeMode = (nextMode: ThemeMode) => {
+    setThemeMode(nextMode);
+    setThemeHydrated(true);
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+    document.documentElement.classList.toggle(
+      "dark",
+      resolveEffectiveDark(nextMode, prefersDark)
+    );
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, nextMode);
+      localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
   };
 
   const toggleBookmark = (targetItem: SignalItem) => {
@@ -341,10 +419,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const newerDate =
     currentDateIdx > 0 ? availableDates[currentDateIdx - 1] : null;
   const displayedDate = optimisticDate ?? activeDate;
+  const formattedHeaderDate = formatHeaderArchiveDate(
+    displayedDate,
+    latestDate
+  );
   const isSwitchingDate =
     isDatePending && Boolean(optimisticDate && optimisticDate !== activeDate);
 
-  // 挂载后立即静默预取前后相邻日期的完整 RSC 数据，确保左右翻页 0ms 秒切
+  // 挂载后立即静默预取相邻归档日期的完整 RSC 数据，确保展开下拉面板点选时 0ms 秒切
   useEffect(() => {
     if (isHubPage) return;
     if (olderDate) {
@@ -604,16 +686,6 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     return () => window.removeEventListener("hashchange", locateFromHash);
   }, [items, isHubPage, routeKey]);
 
-  const hasSubFilters = Boolean(
-    activePlatform || activeTag || searchQuery.trim()
-  );
-
-  const resetSubFilters = () => {
-    setActivePlatform(null);
-    setActiveTag(null);
-    setSearchQuery("");
-  };
-
   const buildSwitcherHref = (targetLocale: Locale) => {
     if (hub) {
       return `/${targetLocale}/${hub.kind}/${hub.slug}`;
@@ -659,154 +731,123 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             </Link>
           ) : (
             <div ref={datePickerRef} className="relative">
-              <nav
-                aria-label="Daily archive navigation"
-                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1 py-0.5 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
+              <button
+                type="button"
+                onClick={() => {
+                  setDatePickerOpen((prev) => !prev);
+                  setLangMenuOpen(false);
+                }}
+                aria-expanded={datePickerOpen}
+                aria-controls="daily-archive-popover"
+                aria-label={`${displayedDate} · ${dict.header.jumpToDate}`}
+                title={`${displayedDate} · ${dict.header.jumpToDate}`}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 font-mono text-xs font-semibold tabular-nums transition-colors sm:px-3 cursor-pointer",
+                  datePickerOpen
+                    ? "border-slate-300 bg-slate-100/90 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                )}
               >
-                {olderDate ? (
-                  <Link
-                    href={buildLocalePath(locale, olderDate, latestDate)}
-                    prefetch={true}
-                    onClick={(e) =>
-                      handleDateLinkClick(
-                        e,
-                        olderDate,
-                        buildLocalePath(locale, olderDate, latestDate)
-                      )
-                    }
-                    title={dict.header.viewDate(olderDate)}
-                    className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Link>
-                ) : (
-                  <span className="p-1 text-slate-300 dark:text-slate-700">
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </span>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setDatePickerOpen((prev) => !prev)}
-                  aria-expanded={datePickerOpen}
-                  aria-haspopup="dialog"
-                  title={dict.header.jumpToDate}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-mono font-semibold text-slate-800 transition-colors hover:bg-white sm:px-2 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
-                >
-                  {isSwitchingDate ? (
+                {isSwitchingDate ? (
+                  <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-                  ) : (
-                    <Calendar className="hidden h-3.5 w-3.5 text-slate-400 sm:inline dark:text-slate-500" />
-                  )}
-                  <span>{displayedDate}</span>
-                  {displayedDate === latestDate && (
-                    <span className="ml-0.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
-                      {dict.header.latestBadge}
-                    </span>
-                  )}
-                  <ChevronDown
-                    className={cn(
-                      "h-3 w-3 text-slate-400 transition-transform",
-                      datePickerOpen && "rotate-180"
-                    )}
-                  />
-                </button>
-
-                {newerDate ? (
-                  <Link
-                    href={buildLocalePath(locale, newerDate, latestDate)}
-                    prefetch={true}
-                    onClick={(e) =>
-                      handleDateLinkClick(
-                        e,
-                        newerDate,
-                        buildLocalePath(locale, newerDate, latestDate)
-                      )
-                    }
-                    title={dict.header.viewDate(newerDate)}
-                    className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Link>
+                  </span>
                 ) : (
-                  <span className="p-1 text-slate-300 dark:text-slate-700">
-                    <ChevronRight className="h-3.5 w-3.5" />
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
+                )}
+                <span>{formattedHeaderDate}</span>
+                {displayedDate === latestDate && (
+                  <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] leading-none font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+                    {dict.header.latestBadge}
                   </span>
                 )}
-              </nav>
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform",
+                    datePickerOpen && "rotate-180"
+                  )}
+                />
+              </button>
 
-              {datePickerOpen && (
-                <div
-                  role="dialog"
-                  aria-label={dict.header.jumpToDate}
-                  className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg sm:w-80 dark:border-slate-800 dark:bg-[#111827]"
-                >
-                  <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs dark:border-slate-800">
-                    <span className="font-semibold text-slate-600 tabular-nums dark:text-slate-300">
-                      {dict.header.archiveCount(availableDates.length)}
-                    </span>
-                    {latestDate && displayedDate !== latestDate && (
-                      <Link
-                        href={`/${locale}`}
-                        prefetch={true}
-                        onClick={(e) =>
-                          handleDateLinkClick(e, latestDate, `/${locale}`)
-                        }
-                        className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:hover:bg-blue-500/25"
-                      >
-                        {dict.header.backToLatestDate}
-                      </Link>
-                    )}
-                  </div>
-
-                  <div className="thin-scrollbar max-h-64 space-y-3 overflow-y-auto pr-1">
-                    {archiveMonths.map(([month, monthDates], monthIdx) => (
-                      <div key={month}>
-                        <div className="mb-1.5 font-mono text-[11px] font-bold text-slate-400 dark:text-slate-500">
-                          {month}
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {monthDates.map((d, idx) => {
-                            const isCurrent = d === displayedDate;
-                            const isLatest = d === latestDate;
-                            const targetHref = buildLocalePath(
-                              locale,
-                              d,
-                              latestDate
-                            );
-                            return (
-                              <Link
-                                key={d}
-                                href={targetHref}
-                                prefetch={monthIdx === 0 && idx < 12 ? true : undefined}
-                                onClick={(e) =>
-                                  handleDateLinkClick(e, d, targetHref)
-                                }
-                                className={cn(
-                                  "flex items-center justify-center gap-1 rounded-md border px-2 py-1 font-mono text-xs font-medium tabular-nums transition-colors",
-                                  isCurrent
-                                    ? "border-slate-900 bg-slate-900 text-white dark:border-blue-500 dark:bg-blue-600 dark:text-white"
-                                    : "border-slate-200/80 bg-slate-50/80 text-slate-700 hover:border-blue-300 hover:bg-blue-50/70 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
-                                )}
-                              >
-                                <span>{d.slice(5)}</span>
-                                {isLatest && (
-                                  <span
-                                    className={cn(
-                                      "h-1.5 w-1.5 rounded-full",
-                                      isCurrent ? "bg-emerald-300" : "bg-emerald-500"
-                                    )}
-                                  />
-                                )}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              {/* SSR 常驻渲染归档导航面板（收起时 CSS hidden）：保留全量 /daily/YYYY-MM-DD 爬虫内链，展开后按需预取 */}
+              <nav
+                id="daily-archive-popover"
+                aria-label={dict.header.jumpToDate}
+                className={cn(
+                  "absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg sm:w-80 dark:border-slate-800 dark:bg-[#111827]",
+                  !datePickerOpen && "hidden"
+                )}
+              >
+                <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs dark:border-slate-800">
+                  <span className="font-semibold text-slate-600 tabular-nums dark:text-slate-300">
+                    {dict.header.archiveCount(availableDates.length)}
+                  </span>
+                  {latestDate && displayedDate !== latestDate && (
+                    <Link
+                      href={`/${locale}`}
+                      prefetch={datePickerOpen ? true : false}
+                      onClick={(e) =>
+                        handleDateLinkClick(e, latestDate, `/${locale}`)
+                      }
+                      className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:hover:bg-blue-500/25"
+                    >
+                      {dict.header.backToLatestDate}
+                    </Link>
+                  )}
                 </div>
-              )}
+
+                <div className="thin-scrollbar max-h-64 space-y-3 overflow-y-auto pr-1">
+                  {archiveMonths.map(([month, monthDates], monthIdx) => (
+                    <div key={month}>
+                      <div className="mb-1.5 font-mono text-[11px] font-bold text-slate-400 dark:text-slate-500">
+                        {month}
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {monthDates.map((d, idx) => {
+                          const isCurrent = d === displayedDate;
+                          const isLatest = d === latestDate;
+                          const targetHref = buildLocalePath(
+                            locale,
+                            d,
+                            latestDate
+                          );
+                          return (
+                            <Link
+                              key={d}
+                              href={targetHref}
+                              title={d}
+                              prefetch={
+                                datePickerOpen && monthIdx === 0 && idx < 12
+                                  ? true
+                                  : false
+                              }
+                              onClick={(e) =>
+                                handleDateLinkClick(e, d, targetHref)
+                              }
+                              className={cn(
+                                "flex items-center justify-center gap-1 rounded-md border px-2 py-1 font-mono text-xs font-medium tabular-nums transition-colors",
+                                isCurrent
+                                  ? "border-slate-900 bg-slate-900 text-white dark:border-blue-500 dark:bg-blue-600 dark:text-white"
+                                  : "border-slate-200/80 bg-slate-50/80 text-slate-700 hover:border-blue-300 hover:bg-blue-50/70 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+                              )}
+                            >
+                              <span>{d.slice(5)}</span>
+                              {isLatest && (
+                                <span
+                                  className={cn(
+                                    "h-1.5 w-1.5 rounded-full",
+                                    isCurrent ? "bg-emerald-300" : "bg-emerald-500"
+                                  )}
+                                />
+                              )}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </nav>
             </div>
           )}
 
@@ -833,34 +874,70 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               )}
             </div>
 
-            {/* 四语种直达胶囊切换器（保持当前日报/专题路由对称跳转） */}
-            <div
-              role="navigation"
-              aria-label={dict.header.switchLang}
-              className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold dark:border-slate-800 dark:bg-slate-900"
-            >
-              <Globe className="mx-1 hidden h-3.5 w-3.5 text-slate-400 sm:inline" />
-              {LOCALES.map((loc) => {
-                const active = loc === locale;
-                const info = LOCALE_LABELS[loc];
-                return (
-                  <Link
-                    key={loc}
-                    href={buildSwitcherHref(loc)}
-                    prefetch={true}
-                    onClick={() => persistLocaleCookie(loc)}
-                    title={info.native}
-                    className={cn(
-                      "rounded-md px-1.5 py-1 leading-none transition-colors sm:px-2",
-                      active
-                        ? "bg-white text-slate-900 shadow-2xs dark:bg-blue-600 dark:text-white"
-                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                    )}
-                  >
-                    {info.short}
-                  </Link>
-                );
-              })}
+            {/* 多语种切换下拉菜单（Icon + 语言缩写胶囊，点击展开选择列表） */}
+            <div ref={langPickerRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setLangMenuOpen((prev) => !prev);
+                  setDatePickerOpen(false);
+                }}
+                aria-expanded={langMenuOpen}
+                aria-haspopup="listbox"
+                aria-label={dict.header.switchLang}
+                title={dict.header.switchLang}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold leading-none transition-colors sm:px-3 cursor-pointer",
+                  langMenuOpen
+                    ? "border-slate-300 bg-slate-100/90 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                )}
+              >
+                <Globe className="h-3.5 w-3.5 text-slate-600 dark:text-slate-300" />
+                <span>{LOCALE_LABELS[locale].short}</span>
+              </button>
+
+              {langMenuOpen && (
+                <div
+                  role="listbox"
+                  aria-label={dict.header.languageMenuTitle}
+                  className="absolute right-0 top-full z-50 mt-2 w-44 rounded-2xl border border-slate-200/90 bg-white p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:bg-[#111827] dark:shadow-black/40"
+                >
+                  <div className="px-3 pt-1.5 pb-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    {dict.header.languageMenuTitle}
+                  </div>
+                  <div className="space-y-0.5">
+                    {LOCALES.map((loc) => {
+                      const active = loc === locale;
+                      const info = LOCALE_LABELS[loc];
+                      return (
+                        <Link
+                          key={loc}
+                          href={buildSwitcherHref(loc)}
+                          prefetch={true}
+                          role="option"
+                          aria-selected={active}
+                          onClick={() => {
+                            persistLocaleCookie(loc);
+                            setLangMenuOpen(false);
+                          }}
+                          className={cn(
+                            "flex items-center justify-between rounded-xl px-3 py-2 text-[13px] transition-colors",
+                            active
+                              ? "bg-slate-100 font-semibold text-slate-900 dark:bg-slate-800 dark:text-white"
+                              : "font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-white"
+                          )}
+                        >
+                          <span>{info.native}</span>
+                          {active && (
+                            <Check className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
@@ -882,18 +959,39 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               <span className="font-mono">{savedItems.length}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={toggleTheme}
-              aria-label={dict.header.toggleTheme}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
-            >
-              {isDark ? (
-                <Sun className="h-4 w-4 text-amber-400" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </button>
+            {/* 单按钮主题切换：仅展示当前选中模式图标，点击按「跟随电脑 → 浅色 → 深色」循环切换 */}
+            {(() => {
+              const displayedThemeMode: ThemeMode = themeHydrated
+                ? themeMode
+                : "system";
+              const themeLabel =
+                displayedThemeMode === "light"
+                  ? dict.header.themeLight
+                  : displayedThemeMode === "dark"
+                    ? dict.header.themeDark
+                    : dict.header.themeSystem;
+              const fullTitle = `${dict.header.toggleTheme}: ${themeLabel}`;
+
+              return (
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectThemeMode(getNextThemeMode(displayedThemeMode))
+                  }
+                  aria-label={fullTitle}
+                  title={fullTitle}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  {displayedThemeMode === "light" ? (
+                    <Sun className="h-4 w-4 text-amber-500" />
+                  ) : displayedThemeMode === "dark" ? (
+                    <Moon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <Monitor className="h-4 w-4" />
+                  )}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </header>
@@ -1116,88 +1214,75 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             {(platformOptions.length > 1 || tagCounts.length > 0) && (
               <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]">
                 {platformOptions.length > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                        {dict.filters.sourcesLabel}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setActivePlatform(null)}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                          activePlatform === null
-                            ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                        )}
-                      >
-                        {dict.filters.allSources}
-                        <span className="font-mono text-[10px] opacity-75">
-                          {tabScopedItems.length}
-                        </span>
-                      </button>
-
-                      {platformOptions.map(
-                        ({ platform, tabCount, totalCount }) => {
-                          const meta = PLATFORM_META[platform] ?? {
-                            label: platform,
-                            dotClass: "bg-slate-400",
-                          };
-                          const selected = activePlatform === platform;
-                          const isUnscopedCategory =
-                            activeTab === "top" || activeTab === "all";
-                          const displayCount = isUnscopedCategory
-                            ? totalCount
-                            : tabCount > 0
-                              ? tabCount
-                              : totalCount;
-                          const dimmed =
-                            !isUnscopedCategory && tabCount === 0 && !selected;
-
-                          return (
-                            <button
-                              key={platform}
-                              type="button"
-                              onClick={() => handleSelectPlatform(platform)}
-                              title={
-                                !isUnscopedCategory && tabCount === 0
-                                  ? dict.filters.crossTabHint(totalCount)
-                                  : dict.filters.filterPlatform(meta.label)
-                              }
-                              className={cn(
-                                "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                                selected
-                                  ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
-                                  : dimmed
-                                    ? "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "h-1.5 w-1.5 rounded-full",
-                                  selected ? "bg-white" : meta.dotClass
-                                )}
-                              />
-                              <span>{meta.label}</span>
-                              <span className="font-mono text-[10px] opacity-70">
-                                {displayCount}
-                              </span>
-                            </button>
-                          );
-                        }
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                      {dict.filters.sourcesLabel}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActivePlatform(null)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                        activePlatform === null
+                          ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                       )}
-                    </div>
+                    >
+                      {dict.filters.allSources}
+                      <span className="font-mono text-[10px] opacity-75">
+                        {tabScopedItems.length}
+                      </span>
+                    </button>
 
-                    {hasSubFilters && (
-                      <button
-                        type="button"
-                        onClick={resetSubFilters}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        {dict.filters.clearFilters}
-                      </button>
+                    {platformOptions.map(
+                      ({ platform, tabCount, totalCount }) => {
+                        const meta = PLATFORM_META[platform] ?? {
+                          label: platform,
+                          dotClass: "bg-slate-400",
+                        };
+                        const selected = activePlatform === platform;
+                        const isUnscopedCategory =
+                          activeTab === "top" || activeTab === "all";
+                        const displayCount = isUnscopedCategory
+                          ? totalCount
+                          : tabCount > 0
+                            ? tabCount
+                            : totalCount;
+                        const dimmed =
+                          !isUnscopedCategory && tabCount === 0 && !selected;
+
+                        return (
+                          <button
+                            key={platform}
+                            type="button"
+                            onClick={() => handleSelectPlatform(platform)}
+                            title={
+                              !isUnscopedCategory && tabCount === 0
+                                ? dict.filters.crossTabHint(totalCount)
+                                : dict.filters.filterPlatform(meta.label)
+                            }
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                              selected
+                                ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                                : dimmed
+                                  ? "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                selected ? "bg-white" : meta.dotClass
+                              )}
+                            />
+                            <span>{meta.label}</span>
+                            <span className="font-mono text-[10px] opacity-70">
+                              {displayCount}
+                            </span>
+                          </button>
+                        );
+                      }
                     )}
                   </div>
                 )}
@@ -1212,68 +1297,58 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   >
                     <div
                       className={cn(
-                        "flex flex-wrap items-center justify-between gap-1.5",
+                        "flex flex-wrap items-center gap-1.5",
                         tagsExpanded &&
                           "thin-scrollbar max-h-44 overflow-y-auto pr-1"
                       )}
                     >
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                          {dict.filters.anglesLabel}
-                        </span>
-                        {displayedTags.map(([tag, count]) => {
-                          const selected = activeTag === tag;
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => handleSelectTag(tag)}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                                selected
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-slate-100/90 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-700"
-                              )}
-                            >
-                              <span>{tag}</span>
-                              <span className="font-mono text-[10px] opacity-70">
-                                {count}
-                              </span>
-                            </button>
-                          );
-                        })}
-
-                        {tagCounts.length > COLLAPSED_TAG_LIMIT && (
+                      <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                        {dict.filters.anglesLabel}
+                      </span>
+                      {displayedTags.map(([tag, count]) => {
+                        const selected = activeTag === tag;
+                        return (
                           <button
+                            key={tag}
                             type="button"
-                            onClick={() => setTagsExpanded((prev) => !prev)}
-                            className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200 cursor-pointer tabular-nums"
+                            onClick={() => handleSelectTag(tag)}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                              selected
+                                ? "bg-blue-600 text-white"
+                                : "bg-slate-100/90 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-700"
+                            )}
                           >
-                            {tagsExpanded ? (
-                              <>
-                                {dict.filters.collapseAngles}
-                                <ChevronUp className="h-3 w-3" />
-                              </>
-                            ) : (
-                              <>
-                                {dict.filters.expandAngles(
-                                  tagCounts.length - COLLAPSED_TAG_LIMIT
-                                )}
-                                <ChevronDown className="h-3 w-3" />
-                              </>
+                            <span>{tag}</span>
+                            <span className="font-mono text-[10px] opacity-70">
+                              {count}
+                            </span>
+                            {selected && (
+                              <X className="h-3 w-3 opacity-85" />
                             )}
                           </button>
-                        )}
-                      </div>
+                        );
+                      })}
 
-                      {platformOptions.length <= 1 && hasSubFilters && (
+                      {tagCounts.length > COLLAPSED_TAG_LIMIT && (
                         <button
                           type="button"
-                          onClick={resetSubFilters}
-                          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
+                          onClick={() => setTagsExpanded((prev) => !prev)}
+                          className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200 cursor-pointer tabular-nums"
                         >
-                          <RotateCcw className="h-3 w-3" />
-                          {dict.filters.clearFilters}
+                          {tagsExpanded ? (
+                            <>
+                              {dict.filters.collapseAngles}
+                              <ChevronUp className="h-3 w-3" />
+                            </>
+                          ) : (
+                            <>
+                              {dict.filters.expandAngles(
+                                tagCounts.length - COLLAPSED_TAG_LIMIT
+                              )}
+                              <ChevronDown className="h-3 w-3" />
+                            </>
+                          )}
                         </button>
                       )}
                     </div>

@@ -51,6 +51,27 @@ export function formatDeterministicClock(
   return locale === "en" ? `${clock} UTC` : clock;
 }
 
+const ISO_DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * 顶栏日期胶囊智能格式化（SSR/Hydration 确定性安全）：
+ * - 与最新一期（referenceDateKey）同年份时省略年份前缀，返回 `MM-DD`（如 `11-24`）
+ * - 跨年份归档或缺少参照年份时保留完整 `YYYY-MM-DD`（如 `2025-11-24`）
+ */
+export function formatHeaderArchiveDate(
+  dateKey: string,
+  referenceDateKey?: string | null
+): string {
+  const normalized = dateKey.trim();
+  if (!ISO_DATE_KEY_RE.test(normalized)) return dateKey;
+
+  const refYear = referenceDateKey?.trim().slice(0, 4);
+  if (refYear && /^\d{4}$/.test(refYear) && normalized.slice(0, 4) === refYear) {
+    return normalized.slice(5);
+  }
+  return normalized;
+}
+
 export function buildSignalPermalink(params: {
   siteUrl: string;
   locale: Locale;

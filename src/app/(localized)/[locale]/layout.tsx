@@ -7,6 +7,7 @@ import {
   isValidLocale,
   LOCALES,
 } from "@/i18n/config";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../../globals.css";
 
 export const metadata: Metadata = {
@@ -16,8 +17,6 @@ export const metadata: Metadata = {
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
 }
-
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("afr-theme")||localStorage.getItem("indieradar-theme");var d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
 
 export default async function LocalizedRootLayout({
   children,

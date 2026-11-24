@@ -18,9 +18,18 @@ import {
   detectPreferredLocale,
   getSiteUrl,
   isPlausibleArchiveDate,
+  LOCALE_LABELS,
   LOCALES,
 } from "../src/i18n/config";
 import { getDictionary } from "../src/i18n/dictionaries";
+import {
+  getNextThemeMode,
+  LEGACY_THEME_STORAGE_KEY,
+  normalizeThemeMode,
+  resolveEffectiveDark,
+  THEME_INIT_SCRIPT,
+  THEME_STORAGE_KEY,
+} from "../src/lib/theme";
 import {
   distillRawItem,
   extractJsonGeneric,
@@ -42,6 +51,7 @@ import {
 import {
   buildSignalPermalink,
   formatDeterministicClock,
+  formatHeaderArchiveDate,
   formatSignalShareBrief,
   toSafeHttpUrl,
 } from "../src/lib/utils";
@@ -101,6 +111,35 @@ test("formatDeterministicClock produces timezone-stable hydration-safe strings",
   assert.equal(formatDeterministicClock(iso, "zh-TW"), "09:30");
   assert.equal(formatDeterministicClock(iso, "ja"), "10:30");
   assert.equal(formatDeterministicClock("invalid-date", "en"), "");
+});
+
+test("formatHeaderArchiveDate omits year within reference year and preserves year across years, and header archive popover stays SSR-crawlable", () => {
+  // Same year as latest archive -> MM-DD
+  assert.equal(formatHeaderArchiveDate("2026-11-24", "2026-11-24"), "11-24");
+  assert.equal(formatHeaderArchiveDate("2026-01-05", "2026-11-24"), "01-05");
+
+  // Cross-year archive (e.g., browsing Dec 2026 from Jan 2027, or older SEO archive) -> YYYY-MM-DD
+  assert.equal(
+    formatHeaderArchiveDate("2026-12-30", "2027-01-02"),
+    "2026-12-30"
+  );
+  assert.equal(
+    formatHeaderArchiveDate("2025-11-24", "2026-11-24"),
+    "2025-11-24"
+  );
+
+  // Missing or malformed inputs fall back safely without throwing
+  assert.equal(formatHeaderArchiveDate("2026-11-24", undefined), "2026-11-24");
+  assert.equal(formatHeaderArchiveDate("2026-11-24", ""), "2026-11-24");
+  assert.equal(formatHeaderArchiveDate("invalid", "2026-11-24"), "invalid");
+
+  // Guardrail: top bar removes ChevronLeft/ChevronRight arrows while keeping archive links in SSR HTML via CSS hidden
+  const boardSource = readFileSync("src/components/radar-board.tsx", "utf8");
+  assert.equal(boardSource.includes("ChevronLeft"), false);
+  assert.equal(boardSource.includes("ChevronRight"), false);
+  assert.equal(boardSource.includes("{datePickerOpen &&"), false);
+  assert.ok(boardSource.includes('id="daily-archive-popover"'));
+  assert.ok(boardSource.includes('!datePickerOpen && "hidden"'));
 });
 
 test("SSRF guard rejects private, loopback, metadata, and non-HTTP URLs", () => {
@@ -245,6 +284,70 @@ test("i18n config, email validation, and siteUrl fallback behave cleanly", () =>
   assert.equal(normalizeAndValidateEmail("a@b\r\ncc:evil@x.com"), null);
 });
 
+test("3-way theme mode defaults to system and resolves light/dark without FOUC", () => {
+  assert.equal(LOCALE_LABELS.en.short, "EN");
+  assert.equal(LOCALE_LABELS.zh.short, "简");
+  assert.equal(LOCALE_LABELS["zh-TW"].short, "繁");
+  assert.equal(LOCALE_LABELS.ja.short, "JP");
+
+  assert.equal(normalizeThemeMode(null), "system");
+  assert.equal(normalizeThemeMode(undefined), "system");
+  assert.equal(normalizeThemeMode("invalid"), "system");
+  assert.equal(normalizeThemeMode("system"), "system");
+  assert.equal(normalizeThemeMode("light"), "light");
+  assert.equal(normalizeThemeMode("dark"), "dark");
+
+  assert.equal(resolveEffectiveDark("system", true), true);
+  assert.equal(resolveEffectiveDark("system", false), false);
+  assert.equal(resolveEffectiveDark("light", true), false);
+  assert.equal(resolveEffectiveDark("light", false), false);
+  assert.equal(resolveEffectiveDark("dark", true), true);
+  assert.equal(resolveEffectiveDark("dark", false), true);
+
+  assert.equal(getNextThemeMode("system"), "light");
+  assert.equal(getNextThemeMode("light"), "dark");
+  assert.equal(getNextThemeMode("dark"), "system");
+
+  // Verify inline <head> THEME_INIT_SCRIPT across unset, "system", "light", "dark", and legacy keys
+  const runInitScript = (
+    storage: Record<string, string>,
+    osDark: boolean
+  ): boolean => {
+    let darkApplied = false;
+    const fn = new Function(
+      "localStorage",
+      "window",
+      "document",
+      THEME_INIT_SCRIPT
+    );
+    fn(
+      { getItem: (k: string) => storage[k] ?? null },
+      { matchMedia: () => ({ matches: osDark }) },
+      {
+        documentElement: {
+          classList: {
+            toggle: (_cls: string, force: boolean) => {
+              darkApplied = Boolean(force);
+            },
+          },
+        },
+      }
+    );
+    return darkApplied;
+  };
+
+  assert.equal(runInitScript({}, true), true);
+  assert.equal(runInitScript({}, false), false);
+  assert.equal(runInitScript({ [THEME_STORAGE_KEY]: "system" }, true), true);
+  assert.equal(runInitScript({ [THEME_STORAGE_KEY]: "system" }, false), false);
+  assert.equal(runInitScript({ [THEME_STORAGE_KEY]: "light" }, true), false);
+  assert.equal(runInitScript({ [THEME_STORAGE_KEY]: "dark" }, false), true);
+  assert.equal(
+    runInitScript({ [LEGACY_THEME_STORAGE_KEY]: "dark" }, false),
+    true
+  );
+});
+
 test("local-fallback dataset & all 4 locale dictionaries are internally consistent", async () => {
   const prevDbUrl = process.env.DATABASE_URL;
   delete process.env.DATABASE_URL;
@@ -255,9 +358,24 @@ test("local-fallback dataset & all 4 locale dictionaries are internally consiste
 
     for (const locale of LOCALES) {
       const dict = getDictionary(locale);
+      assert.ok(LOCALE_LABELS[locale].short.length > 0);
+      assert.ok(LOCALE_LABELS[locale].native.length > 0);
       assert.ok(dict.tabs.ai_trend.length > 0);
       assert.ok(dict.header.jumpToDate.length > 0);
       assert.ok(dict.header.backToLatestDate.length > 0);
+      assert.ok(dict.header.languageMenuTitle.length > 0);
+      assert.ok(dict.header.themeSystem.length > 0);
+      assert.ok(dict.header.themeLight.length > 0);
+      assert.ok(dict.header.themeDark.length > 0);
+      if (locale === "en") {
+        assert.equal(dict.header.languageMenuTitle, "Language");
+        assert.equal(
+          HAS_SIMPLIFIED_CHINESE_RE.test(
+            `${dict.header.themeSystem} ${dict.header.themeLight} ${dict.header.themeDark}`
+          ),
+          false
+        );
+      }
       assert.ok(dict.header.archiveCount(12).includes("12"));
       assert.ok(dict.card.copyBrief.length > 0);
       assert.ok(dict.card.copiedBrief.length > 0);

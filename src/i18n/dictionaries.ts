@@ -19,7 +19,11 @@ export interface Dictionary {
     searchMobile: string;
     saved: string;
     toggleTheme: string;
+    themeSystem: string;
+    themeLight: string;
+    themeDark: string;
     switchLang: string;
+    languageMenuTitle: string;
   };
   overview: {
     headingSrOnly: (date: string) => string;
@@ -138,8 +142,12 @@ const EN_DICT: Dictionary = {
     searchDesktop: "Search niches, MRR, pain points... (⌘K)",
     searchMobile: "Search niches, MRR, pain points...",
     saved: "Saved",
-    toggleTheme: "Toggle color theme",
+    toggleTheme: "Color theme",
+    themeSystem: "Follow system",
+    themeLight: "Light",
+    themeDark: "Dark",
     switchLang: "Switch language",
+    languageMenuTitle: "Language",
   },
   overview: {
     headingSrOnly: (date) =>
@@ -307,8 +315,12 @@ const ZH_DICT: Dictionary = {
     searchDesktop: "搜赛道、MRR、痛点... (⌘K)",
     searchMobile: "搜赛道、MRR、痛点关键词...",
     saved: "收藏",
-    toggleTheme: "切换深浅色主题",
+    toggleTheme: "主题模式",
+    themeSystem: "跟随电脑",
+    themeLight: "浅色",
+    themeDark: "深色",
     switchLang: "切换语言",
+    languageMenuTitle: "语言",
   },
   overview: {
     headingSrOnly: (date) =>
@@ -475,8 +487,12 @@ const ZH_TW_DICT: Dictionary = {
     searchDesktop: "搜賽道、MRR、痛點... (⌘K)",
     searchMobile: "搜賽道、MRR、痛點關鍵字...",
     saved: "收藏",
-    toggleTheme: "切換深淺色主題",
+    toggleTheme: "主題模式",
+    themeSystem: "跟隨電腦",
+    themeLight: "淺色",
+    themeDark: "深色",
     switchLang: "切換語言",
+    languageMenuTitle: "語言",
   },
   overview: {
     headingSrOnly: (date) =>
@@ -643,8 +659,12 @@ const JA_DICT: Dictionary = {
     searchDesktop: "領域・MRR・課題を検索... (⌘K)",
     searchMobile: "領域・MRR・課題キーワードを検索...",
     saved: "保存済み",
-    toggleTheme: "テーマを切り替え",
+    toggleTheme: "テーマ設定",
+    themeSystem: "システム設定に従う",
+    themeLight: "ライト",
+    themeDark: "ダーク",
     switchLang: "言語を切り替え",
+    languageMenuTitle: "言語",
   },
   overview: {
     headingSrOnly: (date) =>
