@@ -18,6 +18,7 @@ import {
   Globe,
   Layers,
   Loader2,
+  MessageSquarePlus,
   Monitor,
   Moon,
   Radar,
@@ -32,6 +33,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { FeedbackModal } from "@/components/feedback-modal";
 import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
 import {
@@ -176,6 +178,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     null
   );
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const router = useRouter();
   const [isDatePending, startDateTransition] = useTransition();
   const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
@@ -1189,6 +1192,27 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               <span className="font-mono">{savedItems.length}</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                setLangMenuOpen(false);
+                setDatePickerOpen(false);
+                setFeedbackOpen(true);
+                trackRadarEvent("feedback_open", {
+                  locale,
+                  placement: "header",
+                });
+              }}
+              aria-label={dict.feedback.triggerTooltip}
+              title={dict.feedback.triggerTooltip}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 sm:px-2.5 cursor-pointer dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">
+                {dict.feedback.triggerLabel}
+              </span>
+            </button>
+
             {/* 单按钮主题切换：仅展示当前选中模式图标，点击按「跟随电脑 → 浅色 → 深色」循环切换 */}
             {(() => {
               const displayedThemeMode: ThemeMode = themeHydrated
@@ -2015,6 +2039,21 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         {/* 页脚与开放订阅/索引入口 */}
         <footer className="mt-10 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
           <div className="mb-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 font-medium text-slate-500 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackOpen(true);
+                trackRadarEvent("feedback_open", {
+                  locale,
+                  placement: "footer",
+                });
+              }}
+              className="inline-flex items-center gap-1 transition-colors hover:text-blue-600 cursor-pointer dark:hover:text-blue-400"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              <span>{dict.feedback.footerLabel}</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
             <a
               href={`/${locale}/feed.xml`}
               target="_blank"
@@ -2047,7 +2086,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           <p>{dict.footer.copyright}</p>
         </footer>
       </main>
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        locale={locale}
+        dict={dict.feedback}
+      />
     </div>
   );
 }
-

@@ -12,12 +12,14 @@ import {
   ExternalLink,
   Flame,
   Globe,
+  MessageSquarePlus,
   Monitor,
   Moon,
   Radar,
   Rss,
   Sun,
 } from "lucide-react";
+import { FeedbackModal } from "@/components/feedback-modal";
 import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
 import {
@@ -84,6 +86,7 @@ export function SignalDetailView({
   const [themeMode, setThemeMode] = useState<ThemeMode>("system");
   const [themeHydrated, setThemeHydrated] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [savedSnapshots, setSavedSnapshots] = useState<
     Record<string, SignalItem>
   >({});
@@ -367,6 +370,26 @@ export function SignalDetailView({
                 </div>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLangMenuOpen(false);
+                setFeedbackOpen(true);
+                trackRadarEvent("feedback_open", {
+                  locale,
+                  placement: "detail_header",
+                });
+              }}
+              aria-label={dict.feedback.triggerTooltip}
+              title={dict.feedback.triggerTooltip}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 sm:px-2.5 cursor-pointer dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">
+                {dict.feedback.triggerLabel}
+              </span>
+            </button>
 
             <button
               type="button"
@@ -718,6 +741,21 @@ export function SignalDetailView({
 
         <footer className="mt-10 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
           <div className="mb-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 font-medium text-slate-500 dark:text-slate-400">
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackOpen(true);
+                trackRadarEvent("feedback_open", {
+                  locale,
+                  placement: "detail_footer",
+                });
+              }}
+              className="inline-flex items-center gap-1 transition-colors hover:text-blue-600 cursor-pointer dark:hover:text-blue-400"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              <span>{dict.feedback.footerLabel}</span>
+            </button>
+            <span>·</span>
             <a
               href={`/${locale}/feed.xml`}
               target="_blank"
@@ -750,6 +788,13 @@ export function SignalDetailView({
           <p>{dict.footer.copyright}</p>
         </footer>
       </main>
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        locale={locale}
+        dict={dict.feedback}
+      />
     </div>
   );
 }

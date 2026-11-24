@@ -85,3 +85,26 @@ export const newsletterSubscribers = pgTable(
     index("newsletter_subscribers_status_idx").on(table.status),
   ]
 ).enableRLS();
+
+export const userFeedback = pgTable(
+  "user_feedback",
+  {
+    id: text("id").primaryKey(),
+    type: text("type").notNull().default("suggestion"), // suggestion | bug | source | other
+    message: text("message").notNull(),
+    contact: text("contact"),
+    pagePath: text("page_path").notNull().default("/"),
+    locale: text("locale").notNull().default("en"), // en | zh | zh-TW | ja
+    status: text("status").notNull().default("open"), // open | reviewed | resolved | archived
+    submitterIpHash: text("submitter_ip_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_feedback_status_created_idx").on(table.status, table.createdAt),
+    index("user_feedback_type_idx").on(table.type),
+    index("user_feedback_ip_created_idx").on(
+      table.submitterIpHash,
+      table.createdAt
+    ),
+  ]
+).enableRLS();

@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n/config";
+import type { FeedbackType } from "@/lib/feedback";
 import type { IndieToolItem, SignalCategory } from "@/types/signal";
 
 export interface CardLensLabels {
@@ -124,6 +125,31 @@ export interface Dictionary {
     rssLabel: string;
     llmsLabel: string;
     githubLabel: string;
+  };
+  feedback: {
+    triggerLabel: string;
+    triggerTooltip: string;
+    footerLabel: string;
+    modalTitle: string;
+    modalSubtitle: string;
+    typeLabel: string;
+    types: Record<FeedbackType, string>;
+    messageLabel: string;
+    messagePlaceholders: Record<FeedbackType, string>;
+    contactLabel: string;
+    contactPlaceholder: string;
+    shortcutHint: string;
+    cancelCta: string;
+    submitCta: string;
+    submittingCta: string;
+    successTitle: string;
+    successDesc: string;
+    sendAnotherCta: string;
+    closeCta: string;
+    tooShortError: string;
+    rateLimitedError: string;
+    localDemoError: string;
+    submitError: string;
   };
   notFound: {
     title: string;
@@ -358,6 +384,47 @@ const EN_DICT: Dictionary = {
     llmsLabel: "llms.txt (AI Index)",
     githubLabel: "GitHub (MIT)",
   },
+  feedback: {
+    triggerLabel: "Feedback",
+    triggerTooltip: "Send feedback, report a bug, or suggest a signal source",
+    footerLabel: "Send Feedback",
+    modalTitle: "Send Feedback & Suggestions",
+    modalSubtitle:
+      "Spot a bug, want a feature, or know a high-signal indie source? Drop a quick note.",
+    typeLabel: "Category",
+    types: {
+      suggestion: "Feature Idea",
+      bug: "Bug Report",
+      source: "Suggest Source",
+      other: "Other",
+    },
+    messageLabel: "Details",
+    messagePlaceholders: {
+      suggestion:
+        "What workflow, filter, or commercial signal would make AI Founder Radar more useful for you?",
+      bug: "What happened, and what page or device were you using?",
+      source:
+        "Share a subreddit, leaderboard, newsletter, or feed URL worth tracking...",
+      other: "Share any thoughts, questions, or ideas...",
+    },
+    contactLabel: "Contact (optional)",
+    contactPlaceholder: "Email or X/Twitter handle if you would like a reply",
+    shortcutHint: "Cmd/Ctrl + Enter to submit",
+    cancelCta: "Cancel",
+    submitCta: "Submit Feedback",
+    submittingCta: "Sending...",
+    successTitle: "Feedback received — thank you!",
+    successDesc:
+      "Your note has been saved directly to our product backlog for review.",
+    sendAnotherCta: "Send another",
+    closeCta: "Done",
+    tooShortError: "Please enter at least 4 characters.",
+    rateLimitedError:
+      "Too many submissions from your network. Please wait 10 minutes and retry.",
+    localDemoError:
+      "Local demo mode: configure DATABASE_URL in .env.local to save feedback.",
+    submitError: "Failed to save feedback right now. Please try again.",
+  },
   notFound: {
     title: "Signal Archive Not Found",
     desc: "The requested date or page does not exist in AI Founder Radar yet.",
@@ -587,6 +654,43 @@ const ZH_DICT: Dictionary = {
     llmsLabel: "llms.txt (AI 索引)",
     githubLabel: "GitHub 开源仓库",
   },
+  feedback: {
+    triggerLabel: "反馈",
+    triggerTooltip: "提交产品建议、问题反馈或推荐优质出海信源",
+    footerLabel: "反馈与建议",
+    modalTitle: "问题反馈与产品建议",
+    modalSubtitle:
+      "遇到体验问题、有想要的新功能，或知道值得接入的一手出海信源？欢迎随时留言。",
+    typeLabel: "反馈类型",
+    types: {
+      suggestion: "功能建议",
+      bug: "问题反馈",
+      source: "推荐信源",
+      other: "其他",
+    },
+    messageLabel: "具体内容",
+    messagePlaceholders: {
+      suggestion: "你希望增加什么功能、筛选维度或商业拆解视角？",
+      bug: "请简单描述遇到的问题现象（如展示异常、链接失效等）...",
+      source: "推荐值得抓取的海外社区、MRR 榜单、目录站或 RSS 链接...",
+      other: "任何想法、吐槽或合作交流都可以直接写在这里...",
+    },
+    contactLabel: "联系方式（选填）",
+    contactPlaceholder: "如需跟进回复，可留邮箱 / 微信 / X 账号",
+    shortcutHint: "支持 ⌘/Ctrl + Enter 快捷提交",
+    cancelCta: "取消",
+    submitCta: "提交反馈",
+    submittingCta: "提交中...",
+    successTitle: "已收到你的反馈，非常感谢！",
+    successDesc: "你的建议已直接存入后台待办库，我们会逐条查看并持续改进产品。",
+    sendAnotherCta: "再提一条",
+    closeCta: "完成",
+    tooShortError: "请至少输入 4 个字符的具体内容。",
+    rateLimitedError: "当前网络提交过于频繁，请等待 10 分钟后再试。",
+    localDemoError:
+      "当前为本地样本演示模式，请在 .env.local 配置 DATABASE_URL 后启用反馈入库。",
+    submitError: "提交失败，请检查网络或稍后重试。",
+  },
   notFound: {
     title: "未找到该期商业信号归档",
     desc: "你访问的日期归档或页面暂不存在，可以返回首页查看最新一期精选信号。",
@@ -815,6 +919,43 @@ const ZH_TW_DICT: Dictionary = {
     rssLabel: "RSS 訂閱源",
     llmsLabel: "llms.txt (AI 索引)",
     githubLabel: "GitHub 開源專案",
+  },
+  feedback: {
+    triggerLabel: "回饋",
+    triggerTooltip: "提交產品建議、回報問題或推薦優質海外來源",
+    footerLabel: "意見回饋",
+    modalTitle: "問題回報與產品建議",
+    modalSubtitle:
+      "遇到使用問題、有想要的新功能，或知道值得納入的海外商業來源？歡迎直接告訴我們。",
+    typeLabel: "回饋類型",
+    types: {
+      suggestion: "功能建議",
+      bug: "問題回報",
+      source: "推薦來源",
+      other: "其他",
+    },
+    messageLabel: "具體內容",
+    messagePlaceholders: {
+      suggestion: "你希望新增什麼功能、篩選條件或商業拆解視角？",
+      bug: "請簡單描述遇到的問題狀況（例如版面異常、連結失效等）...",
+      source: "推薦值得追蹤的海外社群、MRR 榜單、產品目錄或 RSS 連結...",
+      other: "任何想法、建議或交流都歡迎寫在這裡...",
+    },
+    contactLabel: "聯絡方式（選填）",
+    contactPlaceholder: "如需回覆，可留下信箱 / X 帳號 / 其他聯絡方式",
+    shortcutHint: "支援 ⌘/Ctrl + Enter 快速送出",
+    cancelCta: "取消",
+    submitCta: "送出回饋",
+    submittingCta: "送出中...",
+    successTitle: "已收到你的寶貴回饋，非常感謝！",
+    successDesc: "你的建議已直接寫入後台待辦庫，我們會逐一檢視並持續優化。",
+    sendAnotherCta: "再寫一則",
+    closeCta: "完成",
+    tooShortError: "請至少輸入 4 個字元的具體內容。",
+    rateLimitedError: "目前網路送出過於頻繁，請等待 10 分鐘後再試。",
+    localDemoError:
+      "目前為本機樣本展示模式，請先於 .env.local 設定 DATABASE_URL 再啟用回饋存庫。",
+    submitError: "送出失敗，請檢查網路連線或稍後再試。",
   },
   notFound: {
     title: "找不到該期商業信號歸檔",
@@ -1046,6 +1187,47 @@ const JA_DICT: Dictionary = {
     rssLabel: "RSS フィード",
     llmsLabel: "llms.txt (AI 索引)",
     githubLabel: "GitHub (OSS)",
+  },
+  feedback: {
+    triggerLabel: "ご意見",
+    triggerTooltip: "機能要望・不具合報告・おすすめ情報ソースを送る",
+    footerLabel: "ご意見・要望",
+    modalTitle: "フィードバック・ご要望",
+    modalSubtitle:
+      "不具合の報告、欲しい機能、または追跡すべき海外インディー情報源があればお気軽にお知らせください。",
+    typeLabel: "カテゴリ",
+    types: {
+      suggestion: "機能要望",
+      bug: "不具合報告",
+      source: "情報源の推薦",
+      other: "その他",
+    },
+    messageLabel: "詳細内容",
+    messagePlaceholders: {
+      suggestion:
+        "追加してほしい機能やフィルタ、分析の切り口などを教えてください...",
+      bug: "発生した問題や表示崩れ、リンク切れなどの詳細を教えてください...",
+      source:
+        "収集対象に追加してほしい海外コミュニティ・MRRランキング・RSSのURLなど...",
+      other: "ご感想やアイデアなど何でも自由にご記入ください...",
+    },
+    contactLabel: "連絡先（任意）",
+    contactPlaceholder: "返信をご希望の場合はメールアドレスや X アカウントをご記入ください",
+    shortcutHint: "⌘/Ctrl + Enter で送信",
+    cancelCta: "キャンセル",
+    submitCta: "送信する",
+    submittingCta: "送信中...",
+    successTitle: "フィードバックを受け付けました！",
+    successDesc:
+      "いただいたご意見は開発バックログに直接保存されました。改善の参考にさせていただきます。",
+    sendAnotherCta: "続けて送る",
+    closeCta: "閉じる",
+    tooShortError: "4文字以上で具体的な内容をご入力ください。",
+    rateLimitedError:
+      "短時間に送信が集中しています。10分ほど待ってから再度お試しください。",
+    localDemoError:
+      "ローカルデモモードです。.env.local に DATABASE_URL を設定すると保存が有効になります。",
+    submitError: "送信に失敗しました。時間をおいて再度お試しください。",
   },
   notFound: {
     title: "アーカイブが見つかりません",

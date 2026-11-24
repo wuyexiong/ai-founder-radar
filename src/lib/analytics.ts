@@ -9,7 +9,9 @@ export type RadarEventName =
   | "newsletter_submit"
   | "search_query"
   | "saved_export"
-  | "saved_import";
+  | "saved_import"
+  | "feedback_open"
+  | "feedback_submit";
 
 export type RadarEventProps = Record<
   string,
