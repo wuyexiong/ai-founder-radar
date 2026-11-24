@@ -602,6 +602,16 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
         "https://radar.aibuildon.com/en/topic/chrome-extension"
       );
 
+      // Non-EN topic metadata uses pure mother-tongue summary suffix (no English 'signals — Latest:' leak)
+      const zhTopicMeta = await generateTopicMetadata({
+        params: Promise.resolve({ locale: "zh", tag: "chrome-extension" }),
+      });
+      assert.ok((zhTopicMeta.description ?? "").includes("累计收录"));
+      assert.equal(
+        (zhTopicMeta.description ?? "").includes("signals — Latest:"),
+        false
+      );
+
       // Empty source hub in local-fallback (acquire): index=false (noindex) in metadata + notFound() 404 in page render
       const emptySourceMeta = await generateSourceMetadata({
         params: Promise.resolve({ locale: "en", platform: "acquire" }),

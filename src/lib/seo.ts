@@ -163,6 +163,25 @@ export interface BuildHubSeoParams {
   items: SignalItem[];
 }
 
+function formatLocalizedHubDescription(
+  locale: Locale,
+  description: string,
+  count: number,
+  topHeadline?: string
+): string {
+  if (count <= 0 || !topHeadline) return description;
+  switch (locale) {
+    case "zh":
+      return `${description}（累计收录 ${count} 条商业信号 · 最新：${topHeadline}）`;
+    case "zh-TW":
+      return `${description}（累計收錄 ${count} 則商業信號 · 最新：${topHeadline}）`;
+    case "ja":
+      return `${description}（厳選 ${count} 件 · 最新：${topHeadline}）`;
+    default:
+      return `${description} (${count} curated signals — Latest: ${topHeadline})`;
+  }
+}
+
 export function buildHubMetadata({
   locale,
   kind,
@@ -174,11 +193,12 @@ export function buildHubMetadata({
   const siteUrl = getSiteUrl();
   const canonicalPath = `/${locale}/${kind}/${slug}`;
 
-  const topHeadline = items[0]?.title;
-  const richDescription =
-    items.length > 0 && topHeadline
-      ? `${description} (${items.length} signals — Latest: ${topHeadline})`
-      : description;
+  const richDescription = formatLocalizedHubDescription(
+    locale,
+    description,
+    items.length,
+    items[0]?.title
+  );
 
   const languages: Record<string, string> = {};
   for (const loc of LOCALES) {
@@ -288,6 +308,10 @@ export function buildHubJsonLd({
         inLanguage: HREFLANG_MAP[locale],
         isPartOf: { "@id": `${siteUrl}/#website` },
         breadcrumb: { "@id": `${pageUrl}#breadcrumb` },
+        about: {
+          "@type": "Thing",
+          name: breadcrumbLabel,
+        },
         mainEntity: {
           "@type": "ItemList",
           numberOfItems: items.length,

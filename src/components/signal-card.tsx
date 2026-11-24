@@ -339,20 +339,42 @@ export function SignalCard({
 
           {topicPills.map((slug) => {
             const isCurrent = activeTopicSlug === slug;
-            const topicShort = getTopicCopy(slug, locale).shortLabel;
+            const topicCopy = getTopicCopy(slug, locale);
+            if (isCurrent) {
+              return (
+                <span
+                  key={slug}
+                  aria-current="page"
+                  title={topicCopy.label}
+                  className="inline-flex items-center rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                >
+                  {topicCopy.shortLabel}
+                </span>
+              );
+            }
             return (
               <Link
                 key={slug}
                 href={`/${locale}/topic/${slug}`}
-                className={cn(
-                  "inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors",
-                  isCurrent
-                    ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
-                    : "border-slate-200/80 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:text-blue-300"
-                )}
+                target="_blank"
+                rel="noopener"
+                prefetch={false}
+                title={topicCopy.h1}
+                onClick={() =>
+                  trackRadarEvent("topic_hub_click", {
+                    topic_slug: slug,
+                    signal_id: item.id,
+                    locale,
+                    placement: "card",
+                  })
+                }
+                className="inline-flex items-center gap-0.5 rounded-md border border-slate-200/80 bg-white px-2 py-0.5 text-[11.5px] font-medium text-slate-600 transition-colors hover:border-blue-300 hover:text-blue-600 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:text-blue-300"
               >
-                <span>{topicShort}</span>
-                <ArrowUpRight className="h-3 w-3 opacity-60" />
+                <span>{topicCopy.shortLabel}</span>
+                <ArrowUpRight
+                  className="h-3 w-3 opacity-60"
+                  aria-hidden="true"
+                />
               </Link>
             );
           })}
