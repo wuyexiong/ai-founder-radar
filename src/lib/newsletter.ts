@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { eq, inArray } from "drizzle-orm";
 import type { getDb } from "@/db";
 import { newsletterSubscribers } from "@/db/schema";
 import { getSiteUrl, isValidLocale, type Locale } from "@/i18n/config";
@@ -15,6 +16,40 @@ const EMAIL_RE =
 
 const DEFAULT_FROM = "AI Founder Radar <digest@radar.aibuildon.com>";
 
+export const RESEND_BATCH_SIZE = 100;
+export const CONFIRM_RESEND_COOLDOWN_MS = 15 * 60 * 1000;
+export const CONFIRM_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
+export const SUBSCRIBE_RATE_WINDOW_MS = 10 * 60 * 1000;
+export const SUBSCRIBE_MAX_ATTEMPTS_PER_WINDOW = 6;
+
+const ipBuckets = new Map<string, { count: number; resetAt: number }>();
+
+export function resetSubscribeRateLimitForTests(): void {
+  ipBuckets.clear();
+}
+
+export function checkMemoryIpRateLimit(bucketKey: string): boolean {
+  const now = Date.now();
+  if (ipBuckets.size > 2000) {
+    for (const [k, v] of ipBuckets) {
+      if (v.resetAt <= now) ipBuckets.delete(k);
+    }
+  }
+  const existing = ipBuckets.get(bucketKey);
+  if (!existing || existing.resetAt <= now) {
+    ipBuckets.set(bucketKey, {
+      count: 1,
+      resetAt: now + SUBSCRIBE_RATE_WINDOW_MS,
+    });
+    return true;
+  }
+  if (existing.count >= SUBSCRIBE_MAX_ATTEMPTS_PER_WINDOW) {
+    return false;
+  }
+  existing.count += 1;
+  return true;
+}
+
 export function normalizeAndValidateEmail(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim().toLowerCase();
@@ -24,6 +59,37 @@ export function normalizeAndValidateEmail(raw: unknown): string | null {
   const domainPart = trimmed.split("@")[1] ?? "";
   if (!domainPart.includes(".") || domainPart.endsWith(".")) return null;
   return trimmed;
+}
+
+export function extractTrustedClientIp(headers: Headers): string {
+  const candidates = [
+    headers.get("x-vercel-forwarded-for"),
+    headers.get("cf-connecting-ip"),
+    headers.get("x-real-ip"),
+    headers.get("x-forwarded-for"),
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const first = raw.split(",")[0]?.trim();
+    if (first && first.length <= 128) {
+      return first;
+    }
+  }
+  return "unknown";
+}
+
+export function hashClientIp(ip: string | undefined | null): string | null {
+  if (!ip) return null;
+  const normalized = ip.trim().toLowerCase();
+  if (!normalized || normalized === "unknown") return null;
+  const salt =
+    process.env.REVALIDATE_SECRET?.trim() ||
+    process.env.RESEND_API_KEY?.trim() ||
+    "afr-default-ip-salt";
+  return createHash("sha256")
+    .update(`afr-nl-ip-v1:${salt}:${normalized}`)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 export function hasResendConfigured(): boolean {
@@ -44,8 +110,21 @@ function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function buildUnsubscribeUrl(token: string): string {
+export function buildUnsubscribeUrl(token: string): string {
   return `${getSiteUrl()}/api/newsletter/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
+export function buildConfirmUrl(token: string): string {
+  return `${getSiteUrl()}/api/newsletter/confirm?token=${encodeURIComponent(token)}`;
+}
+
+interface ResendEmailPayload {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  headers: Record<string, string>;
 }
 
 async function sendResendEmail(params: {
@@ -75,7 +154,7 @@ async function sendResendEmail(params: {
           "List-Unsubscribe": `<${params.unsubscribeUrl}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
-      }),
+      } satisfies ResendEmailPayload),
       signal: AbortSignal.timeout(15_000),
     });
 
@@ -92,6 +171,132 @@ async function sendResendEmail(params: {
     console.warn(`[Newsletter] Resend send failed: ${msg}`);
     return false;
   }
+}
+
+async function sendResendBatchEmails(
+  batchPayload: ResendEmailPayload[]
+): Promise<boolean> {
+  if (batchPayload.length === 0) return true;
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return false;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails/batch", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(batchPayload),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.warn(
+        `[Newsletter] Resend batch HTTP ${res.status}: ${errBody.slice(0, 180)}`
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Network error";
+    console.warn(`[Newsletter] Resend batch send failed: ${msg}`);
+    return false;
+  }
+}
+
+const CONFIRM_EMAIL_COPY: Record<
+  Locale,
+  {
+    subject: string;
+    heading: string;
+    intro: string;
+    cta: string;
+    ignoreNote: string;
+    unsubText: string;
+  }
+> = {
+  en: {
+    subject: "Confirm your subscription — AI Founder Radar",
+    heading: "Confirm your email to activate the 8 AM digest",
+    intro:
+      "Click the button below within 48 hours to confirm your email and receive the daily Top 5 verified Micro-SaaS launches, real MRR breakdowns, and high-intent user pain points.",
+    cta: "Confirm Subscription →",
+    ignoreNote:
+      "If you did not request this subscription, simply ignore this email — you will never receive further messages without confirming.",
+    unsubText: "One-click unsubscribe",
+  },
+  zh: {
+    subject: "请确认订阅 AI Founder Radar — 每日 5 分钟出海搞钱早报",
+    heading: "点击下方按钮，激活每日早 8 点精选早报",
+    intro:
+      "收到你的早报订阅请求。请在 48 小时内点击下方按钮确认邮箱归属，激活每日 Top 5 海外新产品、真实 MRR 营收拆解与高付费意愿痛点推送。",
+    cta: "确认激活早报订阅 →",
+    ignoreNote:
+      "如果这不是你本人的操作，请直接忽略此邮件——未点击确认前我们绝不会向你发送任何早报。",
+    unsubText: "一键退订",
+  },
+  "zh-TW": {
+    subject: "請確認訂閱 AI Founder Radar — 每日 5 分鐘出海變現早報",
+    heading: "點擊下方按鈕，啟用每日早 8 點精選早報",
+    intro:
+      "收到你的早報訂閱請求。請於 48 小時內點擊下方按鈕確認信箱歸屬，啟用每日 Top 5 海外新產品、真實 MRR 營收拆解與痛點推送。",
+    cta: "確認啟用早報訂閱 →",
+    ignoreNote:
+      "若非你本人操作，請直接忽略此信件——未點擊確認前我們絕不會向你發送任何早報。",
+    unsubText: "取消訂閱",
+  },
+  ja: {
+    subject: "【要確認】AI Founder Radar 日刊メルマガの購読確認",
+    heading: "下のボタンをクリックして毎朝8時の配信を有効化してください",
+    intro:
+      "AI Founder Radar への購読リクエストを受け付けました。48時間以内に下のボタンをクリックしてメールアドレスを確認し、海外Micro-SaaS・リアルMRR事例 Top 5 の日刊配信を開始してください。",
+    cta: "購読を確認して有効化する →",
+    ignoreNote:
+      "お心当たりがない場合はこのまま破棄してください。確認リンクをクリックしない限りメールは配信されません。",
+    unsubText: "配信停止",
+  },
+};
+
+export async function sendConfirmationEmail(params: {
+  email: string;
+  locale: Locale;
+  confirmToken: string;
+  unsubscribeToken: string;
+}): Promise<boolean> {
+  if (!hasResendConfigured()) return false;
+
+  const copy = CONFIRM_EMAIL_COPY[params.locale] ?? CONFIRM_EMAIL_COPY.en;
+  const confirmUrl = buildConfirmUrl(params.confirmToken);
+  const unsubUrl = buildUnsubscribeUrl(params.unsubscribeToken);
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:24px 16px;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0F172A;">
+  <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;padding:28px;">
+    <div style="font-size:13px;font-weight:700;color:#2563EB;letter-spacing:0.02em;margin-bottom:8px;">AI FOUNDER RADAR</div>
+    <h1 style="margin:0 0 12px;font-size:20px;line-height:1.4;color:#0F172A;">${escapeHtml(copy.heading)}</h1>
+    <p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#334155;">${escapeHtml(copy.intro)}</p>
+    <a href="${escapeHtml(confirmUrl)}" style="display:inline-block;background:#2563EB;color:#FFFFFF;text-decoration:none;font-size:13.5px;font-weight:600;padding:11px 20px;border-radius:8px;">${escapeHtml(copy.cta)}</a>
+    <p style="margin:20px 0 0;font-size:12.5px;line-height:1.6;color:#64748B;">${escapeHtml(copy.ignoreNote)}</p>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 14px;" />
+    <div style="font-size:12px;color:#94A3B8;">
+      AI Founder Radar · <a href="${escapeHtml(unsubUrl)}" style="color:#64748B;text-decoration:underline;">${escapeHtml(copy.unsubText)}</a>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `${copy.heading}\n\n${copy.intro}\n\n${copy.cta}: ${confirmUrl}\n\n${copy.ignoreNote}\n\n---\n${copy.unsubText}: ${unsubUrl}`;
+
+  return sendResendEmail({
+    to: params.email,
+    subject: copy.subject,
+    html,
+    text,
+    unsubscribeUrl: unsubUrl,
+  });
 }
 
 const WELCOME_COPY: Record<
@@ -299,7 +504,7 @@ export function buildDigestContent(params: {
   const { locale, dateKey, totalCount, topItems } = params;
   const labels = DIGEST_LABELS[locale] ?? DIGEST_LABELS.en;
   const siteUrl = getSiteUrl();
-  const archiveUrl = `${siteUrl}/${locale}/daily/${dateKey}`;
+  const archiveUrl = `${siteUrl}/${locale}/daily/${dateKey}?utm_source=daily_digest&utm_medium=email`;
   const unsubUrl = buildUnsubscribeUrl(params.unsubscribeToken);
   const localizedCards = topItems.map((item) => ({
     raw: item,
@@ -388,9 +593,14 @@ export async function sendDailyNewsletterDigests(params: {
   summaryNote: string;
   summaryTranslations?: SummaryTranslations;
   rateLimitDelayMs?: number;
+  batchSize?: number;
 }): Promise<void> {
   const { db, dateKey, allItems, summaryNote, summaryTranslations } = params;
   const rateLimitDelayMs = params.rateLimitDelayMs ?? 550;
+  const batchSize = Math.min(
+    RESEND_BATCH_SIZE,
+    Math.max(1, Math.floor(params.batchSize ?? RESEND_BATCH_SIZE))
+  );
 
   if (!hasResendConfigured()) {
     console.log(
@@ -404,6 +614,7 @@ export async function sendDailyNewsletterDigests(params: {
     return;
   }
 
+  // 严格仅向已完成 Double Opt-in 激活 (status === 'active') 的订阅者推送，pending 与 unsubscribed 绝不触发群发
   const activeSubscribers = await db
     .select()
     .from(newsletterSubscribers)
@@ -415,47 +626,61 @@ export async function sendDailyNewsletterDigests(params: {
 
   if (pending.length === 0) {
     console.log(
-      `📬 邮件早报检查完成（活跃订阅者 ${activeSubscribers.length} 人，今日均已发送或暂无订阅者）。`
+      `📬 邮件早报检查完成（活跃已确认订阅者 ${activeSubscribers.length} 人，今日均已发送或暂无订阅者）。`
     );
     return;
   }
 
   const topItems = [...allItems].sort((a, b) => b.score - a.score).slice(0, 5);
+  const fromAddress = getFromAddress();
   let sentCount = 0;
 
-  console.log(`📬 开始向 ${pending.length} 位活跃订阅者发送 ${dateKey} 早报...`);
+  console.log(
+    `📬 开始通过 Resend Batch API 向 ${pending.length} 位活跃订阅者发送 ${dateKey} 早报（每批最多 ${batchSize} 封）...`
+  );
 
-  for (let i = 0; i < pending.length; i++) {
-    const sub = pending[i];
-    const subLocale: Locale = isValidLocale(sub.locale) ? sub.locale : "en";
-    const mail = buildDigestContent({
-      locale: subLocale,
-      dateKey,
-      totalCount: allItems.length,
-      topItems,
-      summaryZh: summaryNote,
-      summaryTranslations,
-      unsubscribeToken: sub.unsubscribeToken,
+  for (let offset = 0; offset < pending.length; offset += batchSize) {
+    const chunk = pending.slice(offset, offset + batchSize);
+    const batchPayload: ResendEmailPayload[] = chunk.map((sub) => {
+      const subLocale: Locale = isValidLocale(sub.locale) ? sub.locale : "en";
+      const mail = buildDigestContent({
+        locale: subLocale,
+        dateKey,
+        totalCount: allItems.length,
+        topItems,
+        summaryZh: summaryNote,
+        summaryTranslations,
+        unsubscribeToken: sub.unsubscribeToken,
+      });
+
+      return {
+        from: fromAddress,
+        to: [sub.email],
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        headers: {
+          "List-Unsubscribe": `<${mail.unsubscribeUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      };
     });
 
-    const ok = await sendResendEmail({
-      to: sub.email,
-      subject: mail.subject,
-      html: mail.html,
-      text: mail.text,
-      unsubscribeUrl: mail.unsubscribeUrl,
-    });
-
+    const ok = await sendResendBatchEmails(batchPayload);
     if (ok) {
-      sentCount++;
+      sentCount += chunk.length;
       await db
         .update(newsletterSubscribers)
         .set({ lastSentDate: dateKey, updatedAt: new Date() })
-        .where(eq(newsletterSubscribers.id, sub.id));
+        .where(
+          inArray(
+            newsletterSubscribers.id,
+            chunk.map((s) => s.id)
+          )
+        );
     }
 
-    // 遵守 Resend 免费套餐 2 req/s 速率限制
-    if (i < pending.length - 1 && rateLimitDelayMs > 0) {
+    if (offset + batchSize < pending.length && rateLimitDelayMs > 0) {
       await sleep(rateLimitDelayMs);
     }
   }

@@ -373,11 +373,15 @@ describe("Card P1/P2 Evolution: Strict Green Badge, Lifecycle Age, Dual Links & 
         const html = renderToStaticMarkup(
           React.createElement(SignalDetailView, { payload })
         );
+        const dict = getDictionary(locale);
         assert.ok(html.includes(payload.item.title));
         assert.ok(html.includes('href="https://snapinvoice.app/"'));
-        assert.ok(
-          html.includes(getDictionary(locale).signalDetail.relatedHeading)
-        );
+        assert.ok(html.includes(dict.signalDetail.relatedHeading));
+        // Bottom newsletter subscribe card & GitHub footer link on /signal/[id]
+        assert.ok(html.includes(dict.sidebar.newsletterTitle));
+        assert.ok(html.includes(dict.sidebar.newsletterCta));
+        assert.ok(html.includes(dict.footer.githubLabel));
+        assert.equal(html.includes("sponsored"), false);
         if (locale === "en") {
           assert.equal(
             CJK_RE.test(html),

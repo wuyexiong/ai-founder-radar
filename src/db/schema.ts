@@ -64,8 +64,12 @@ export const newsletterSubscribers = pgTable(
     id: text("id").primaryKey(),
     email: text("email").notNull(),
     locale: text("locale").notNull().default("en"), // en | zh | zh-TW | ja
-    status: text("status").notNull().default("active"), // active | unsubscribed
+    status: text("status").notNull().default("pending"), // pending | active | unsubscribed
     unsubscribeToken: text("unsubscribe_token").notNull(),
+    confirmToken: text("confirm_token"),
+    confirmSentAt: timestamp("confirm_sent_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    signupIpHash: text("signup_ip_hash"),
     lastSentDate: text("last_sent_date"), // YYYY-MM-DD 幂等防重发标记
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -73,6 +77,11 @@ export const newsletterSubscribers = pgTable(
   (table) => [
     uniqueIndex("newsletter_subscribers_email_idx").on(table.email),
     uniqueIndex("newsletter_subscribers_token_idx").on(table.unsubscribeToken),
+    index("newsletter_subscribers_confirm_token_idx").on(table.confirmToken),
+    index("newsletter_subscribers_ip_updated_idx").on(
+      table.signupIpHash,
+      table.updatedAt
+    ),
     index("newsletter_subscribers_status_idx").on(table.status),
   ]
 ).enableRLS();

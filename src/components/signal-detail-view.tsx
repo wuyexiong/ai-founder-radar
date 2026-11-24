@@ -18,6 +18,7 @@ import {
   Rss,
   Sun,
 } from "lucide-react";
+import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
 import {
   buildLocalePath,
@@ -679,6 +680,15 @@ export function SignalDetailView({
           </section>
         )}
 
+        {/* 详情页底部早报订阅承接卡片 */}
+        <section className="mt-8">
+          <NewsletterSubscribeCard
+            dict={dict.sidebar}
+            locale={locale}
+            placement="detail"
+          />
+        </section>
+
         {/* 常青赛道专题内链目录 */}
         {hubDirectory.topics.length > 0 && (
           <section className="mt-10 rounded-2xl border border-slate-200/90 bg-white p-5 dark:border-slate-800 dark:bg-[#111827]">
@@ -725,6 +735,16 @@ export function SignalDetailView({
               className="font-mono transition-colors hover:text-blue-600 dark:hover:text-blue-400"
             >
               {dict.footer.llmsLabel}
+            </a>
+            <span>·</span>
+            <a
+              href="https://github.com/wuyexiong/ai-founder-radar"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 transition-colors hover:text-slate-900 dark:hover:text-white"
+            >
+              <span>{dict.footer.githubLabel}</span>
+              <ExternalLink className="h-3 w-3" />
             </a>
           </div>
           <p>{dict.footer.copyright}</p>

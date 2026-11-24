@@ -10,6 +10,11 @@ import { generateMetadata as generateHomeMetadata } from "../src/app/(localized)
 import { generateMetadata as generateTopicMetadata } from "../src/app/(localized)/[locale]/topic/[tag]/page";
 import { GET as getLlmsFullTxt } from "../src/app/llms-full.txt/route";
 import { GET as getLlmsTxt } from "../src/app/llms.txt/route";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { NewsletterSubscribeCard } from "../src/components/newsletter-subscribe-card";
 import { HREFLANG_MAP, LOCALES } from "../src/i18n/config";
 import { getDictionary } from "../src/i18n/dictionaries";
 import { trackRadarEvent } from "../src/lib/analytics";
@@ -212,6 +217,29 @@ describe("Package A Growth Engine: RSS 2.0, llms.txt, Analytics, UTM & Cache/SSR
 
       assert.equal(homePayload.isArchiveRoute, false);
       assert.equal(archivePayload.isArchiveRoute, true);
+
+      const boardSource = readFileSync(
+        resolve(process.cwd(), "src/components/radar-board.tsx"),
+        "utf8"
+      );
+      assert.equal(
+        boardSource.includes("sponsored"),
+        false,
+        "Toolbox links must not include rel=sponsored on non-commercial Hobby tier"
+      );
+      assert.ok(boardSource.includes('rel="noopener noreferrer"'));
+
+      for (const placement of ["sidebar", "inline", "detail"] as const) {
+        const subHtml = renderToStaticMarkup(
+          React.createElement(NewsletterSubscribeCard, {
+            dict: getDictionary("en").sidebar,
+            locale: "en",
+            placement,
+          })
+        );
+        assert.ok(subHtml.includes("5-Minute Daily Indie Digest"));
+        assert.equal(/[\u4e00-\u9fff\u3040-\u30ff]/.test(subHtml), false);
+      }
       assert.ok(
         RECENT_CORPUS_CACHE_LIMIT <= 400,
         `RECENT_CORPUS_CACHE_LIMIT (${RECENT_CORPUS_CACHE_LIMIT}) must stay safely under Next.js 2MB unstable_cache ceiling`

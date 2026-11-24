@@ -110,8 +110,11 @@ export interface Dictionary {
     newsletterTitle: string;
     newsletterDesc: string;
     newsletterSuccess: string;
+    newsletterCheckInbox: string;
+    newsletterPendingMailer: string;
     newsletterAlready: string;
     newsletterSubmitting: string;
+    newsletterRateLimited: string;
     newsletterError: string;
     newsletterLocalDemo: string;
     newsletterCta: string;
@@ -335,8 +338,14 @@ const EN_DICT: Dictionary = {
     newsletterDesc:
       "Get the top 5 verified Micro-SaaS launches & MRR breakdowns in your inbox at 8 AM.",
     newsletterSuccess: "✓ Subscribed! You're on the daily 8 AM founder list.",
+    newsletterCheckInbox:
+      "📬 Almost there! Click the confirmation link sent to your inbox to activate your 8 AM digest.",
+    newsletterPendingMailer:
+      "✓ Email saved as pending — confirmation mail will send once RESEND_API_KEY is configured.",
     newsletterAlready: "✓ Already subscribed — language preference updated.",
     newsletterSubmitting: "Saving...",
+    newsletterRateLimited:
+      "Too many attempts from your network. Please wait 10 minutes and try again.",
     newsletterError: "Subscription failed. Please check your email and retry.",
     newsletterLocalDemo:
       "Local demo mode: configure DATABASE_URL in .env.local to save subscriptions.",
@@ -559,8 +568,13 @@ const ZH_DICT: Dictionary = {
     newsletterTitle: "订阅每日 5 分钟出海搞钱早报",
     newsletterDesc: "每天早 8 点推送当日 Top 5 验证过的海外新产品与 MRR 案例。",
     newsletterSuccess: "✓ 订阅成功！你的邮箱已加入每日早 8 点精选推送名单。",
+    newsletterCheckInbox:
+      "📬 请前往邮箱点击确认链接完成激活（未确认前不会向你发送早报）。",
+    newsletterPendingMailer:
+      "✓ 邮箱已登记为待确认状态（配置 RESEND_API_KEY 后将自动发送确认激活邮件）。",
     newsletterAlready: "✓ 该邮箱已在订阅名单中，已同步当前语言偏好。",
     newsletterSubmitting: "提交中...",
+    newsletterRateLimited: "当前网络提交过于频繁，请等待 10 分钟后再试。",
     newsletterError: "订阅失败，请检查邮箱格式或稍后重试。",
     newsletterLocalDemo:
       "当前为本地样本演示模式，请在 .env.local 配置 DATABASE_URL 后启用订阅存库。",
@@ -783,8 +797,13 @@ const ZH_TW_DICT: Dictionary = {
     newsletterTitle: "訂閱每日 5 分鐘出海變現早報",
     newsletterDesc: "每天早上 8 點推送當日 Top 5 驗證過的海外新產品與 MRR 案例。",
     newsletterSuccess: "✓ 訂閱成功！你的信箱已加入每日早 8 點精選推送名單。",
+    newsletterCheckInbox:
+      "📬 請前往信箱點擊確認連結完成啟用（未確認前不會向你發送早報）。",
+    newsletterPendingMailer:
+      "✓ 信箱已登記為待確認狀態（設定 RESEND_API_KEY 後將自動發送確認信啟用）。",
     newsletterAlready: "✓ 此信箱已在訂閱名單中，已同步目前語言偏好。",
     newsletterSubmitting: "送出中...",
+    newsletterRateLimited: "目前網路送出過於頻繁，請等待 10 分鐘後再試。",
     newsletterError: "訂閱失敗，請檢查信箱格式或稍後再試。",
     newsletterLocalDemo:
       "目前為本機樣本展示模式，請先於 .env.local 設定 DATABASE_URL 再啟用訂閱。",
@@ -1008,8 +1027,14 @@ const JA_DICT: Dictionary = {
     newsletterDesc:
       "毎朝8時に厳選された海外Micro-SaaS事例＆MRRデータを5件お届けします。",
     newsletterSuccess: "✓ 購読登録が完了しました！毎朝8時の配信リストに追加されました。",
+    newsletterCheckInbox:
+      "📬 確認メールを送信しました。受信トレイ内の確認リンクをクリックして配信を有効化してください。",
+    newsletterPendingMailer:
+      "✓ 確認待ちとして保存しました（RESEND_API_KEY 設定後に確認メールが送信されます）。",
     newsletterAlready: "✓ すでに登録済みです（言語設定を更新しました）。",
     newsletterSubmitting: "送信中...",
+    newsletterRateLimited:
+      "短時間にリクエストが集中しています。10分ほど待ってから再度お試しください。",
     newsletterError: "登録に失敗しました。メールアドレスをご確認の上、再試行してください。",
     newsletterLocalDemo:
       "ローカルデモモードです。.env.local に DATABASE_URL を設定すると購読保存が有効になります。",

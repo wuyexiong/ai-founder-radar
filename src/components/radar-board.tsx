@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Bookmark,
   Calendar,
@@ -18,7 +18,6 @@ import {
   Globe,
   Layers,
   Loader2,
-  Mail,
   Monitor,
   Moon,
   Radar,
@@ -33,6 +32,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
 import {
   buildLocalePath,
@@ -1874,7 +1874,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                         campaign: "indie_stack",
                       })}
                       target="_blank"
-                      rel="noopener noreferrer sponsored"
+                      rel="noopener noreferrer"
                       onClick={() =>
                         trackRadarEvent("toolbox_click", {
                           tool_name: tool.name,
@@ -2051,145 +2051,3 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   );
 }
 
-function NewsletterSubscribeCard({
-  dict,
-  locale,
-  placement = "sidebar",
-}: {
-  dict: ReturnType<typeof getDictionary>["sidebar"];
-  locale: Locale;
-  placement?: "sidebar" | "inline";
-}) {
-  const [emailInput, setEmailInput] = useState("");
-  const [honeypot, setHoneypot] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "submitting" | "subscribed" | "already" | "error" | "local_demo"
-  >("idle");
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = emailInput.trim();
-    if (!trimmed || status === "submitting") return;
-
-    setStatus("submitting");
-    try {
-      const res = await fetch("/api/newsletter/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: trimmed,
-          locale,
-          website: honeypot,
-        }),
-      });
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        status?: string;
-        code?: string;
-      } | null;
-
-      if (res.ok && data?.ok) {
-        const nextStatus =
-          data.status === "already_subscribed" ? "already" : "subscribed";
-        setStatus(nextStatus);
-        setEmailInput("");
-        trackRadarEvent("newsletter_submit", {
-          locale,
-          placement,
-          result: nextStatus,
-        });
-      } else if (data?.code === "DB_NOT_CONFIGURED") {
-        setStatus("local_demo");
-      } else {
-        setStatus("error");
-        trackRadarEvent("newsletter_submit", {
-          locale,
-          placement,
-          result: "error",
-        });
-      }
-    } catch {
-      setStatus("error");
-      trackRadarEvent("newsletter_submit", {
-        locale,
-        placement,
-        result: "error",
-      });
-    }
-  };
-
-  return (
-    <div
-      className={cn(
-        "rounded-xl border p-4",
-        placement === "inline"
-          ? "border-blue-200/90 bg-gradient-to-br from-blue-50/70 to-white dark:border-blue-500/30 dark:from-blue-950/25 dark:to-[#111827]"
-          : "border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]"
-      )}
-    >
-      <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
-        <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-        {dict.newsletterTitle}
-      </h2>
-      <p className="mb-2.5 text-xs text-slate-500 dark:text-slate-400">
-        {dict.newsletterDesc}
-      </p>
-      {status === "subscribed" || status === "already" ? (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-          {status === "already"
-            ? dict.newsletterAlready
-            : dict.newsletterSuccess}
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-1.5">
-          {/* 防刷蜜罐输入框（屏幕阅读器与视觉均隐藏） */}
-          <input
-            type="text"
-            name="website"
-            tabIndex={-1}
-            autoComplete="off"
-            aria-hidden="true"
-            value={honeypot}
-            onChange={(e) => setHoneypot(e.target.value)}
-            className="hidden"
-          />
-          <div className="flex gap-1.5">
-            <input
-              type="email"
-              required
-              disabled={status === "submitting"}
-              value={emailInput}
-              onChange={(e) => {
-                setEmailInput(e.target.value);
-                if (status === "error" || status === "local_demo") {
-                  setStatus("idle");
-                }
-              }}
-              placeholder="you@example.com"
-              className="h-8 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
-            />
-            <button
-              type="submit"
-              disabled={status === "submitting"}
-              className="h-8 shrink-0 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
-            >
-              {status === "submitting"
-                ? dict.newsletterSubmitting
-                : dict.newsletterCta}
-            </button>
-          </div>
-          {status === "error" && (
-            <p className="text-[11px] text-rose-600 dark:text-rose-400">
-              {dict.newsletterError}
-            </p>
-          )}
-          {status === "local_demo" && (
-            <p className="text-[11px] text-amber-700 dark:text-amber-400">
-              {dict.newsletterLocalDemo}
-            </p>
-          )}
-        </form>
-      )}
-    </div>
-  );
-}

@@ -63,10 +63,14 @@ async function processUnsubscribe(
     const sub = rows[0];
     if (!sub) return { locale: "en", ok: true };
 
-    if (sub.status !== "unsubscribed") {
+    if (sub.status !== "unsubscribed" || sub.confirmToken !== null) {
       await db
         .update(newsletterSubscribers)
-        .set({ status: "unsubscribed", updatedAt: new Date() })
+        .set({
+          status: "unsubscribed",
+          confirmToken: null,
+          updatedAt: new Date(),
+        })
         .where(eq(newsletterSubscribers.id, sub.id));
     }
 
