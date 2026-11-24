@@ -12,6 +12,9 @@ export interface Dictionary {
     tagline: string;
     latestBadge: string;
     viewDate: (date: string) => string;
+    jumpToDate: string;
+    backToLatestDate: string;
+    archiveCount: (count: number) => string;
     searchDesktop: string;
     searchMobile: string;
     saved: string;
@@ -53,6 +56,11 @@ export interface Dictionary {
     whatItIs: string;
     monetization: string;
     playbook: string;
+    copyBrief: string;
+    copiedBrief: string;
+    copyBriefTooltip: string;
+    shareLinkLabel: string;
+    filterByTag: (tag: string) => string;
     saved: string;
     save: string;
     viewSource: string;
@@ -121,6 +129,9 @@ const EN_DICT: Dictionary = {
     tagline: "Global Micro-SaaS & MRR Signal Radar",
     latestBadge: "Latest",
     viewDate: (date) => `View signals for ${date}`,
+    jumpToDate: "Browse archive dates",
+    backToLatestDate: "Jump to Latest",
+    archiveCount: (count) => `${count} archived issues`,
     searchDesktop: "Search niches, MRR, pain points... (⌘K)",
     searchMobile: "Search niches, MRR, pain points...",
     saved: "Saved",
@@ -171,6 +182,11 @@ const EN_DICT: Dictionary = {
     whatItIs: "📌 What it is:",
     monetization: "💵 Monetization:",
     playbook: "💡 Indie Playbook:",
+    copyBrief: "Copy",
+    copiedBrief: "Copied",
+    copyBriefTooltip: "Copy 3-point brief & permanent share link",
+    shareLinkLabel: "🔗 Signal & Source:",
+    filterByTag: (tag) => `Filter current list by ${tag}`,
     saved: "Saved",
     save: "Save",
     viewSource: "Source",
@@ -279,6 +295,9 @@ const ZH_DICT: Dictionary = {
     tagline: "出海搞钱与产品灵感雷达",
     latestBadge: "最新",
     viewDate: (date) => `查看 ${date}`,
+    jumpToDate: "展开历史归档日期选择",
+    backToLatestDate: "回到最新一期",
+    archiveCount: (count) => `共收录 ${count} 期`,
     searchDesktop: "搜赛道、MRR、痛点... (⌘K)",
     searchMobile: "搜赛道、MRR、痛点关键词...",
     saved: "收藏",
@@ -329,6 +348,11 @@ const ZH_DICT: Dictionary = {
     whatItIs: "📌 是什么：",
     monetization: "💵 怎么赚：",
     playbook: "💡 抄作业：",
+    copyBrief: "复制",
+    copiedBrief: "已复制",
+    copyBriefTooltip: "一键复制三要素摘要与分享锚点链接",
+    shareLinkLabel: "🔗 详情与原帖：",
+    filterByTag: (tag) => `按 ${tag} 筛选本页信号`,
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
@@ -436,6 +460,9 @@ const ZH_TW_DICT: Dictionary = {
     tagline: "出海搞錢與產品靈感雷達",
     latestBadge: "最新",
     viewDate: (date) => `查看 ${date}`,
+    jumpToDate: "展開歷史歸檔日期選擇",
+    backToLatestDate: "回到最新一期",
+    archiveCount: (count) => `共收錄 ${count} 期`,
     searchDesktop: "搜賽道、MRR、痛點... (⌘K)",
     searchMobile: "搜賽道、MRR、痛點關鍵字...",
     saved: "收藏",
@@ -486,6 +513,11 @@ const ZH_TW_DICT: Dictionary = {
     whatItIs: "📌 是什麼：",
     monetization: "💵 怎麼賺：",
     playbook: "💡 抄作業：",
+    copyBrief: "複製",
+    copiedBrief: "已複製",
+    copyBriefTooltip: "一鍵複製三要素摘要與分享連結",
+    shareLinkLabel: "🔗 詳情與原帖：",
+    filterByTag: (tag) => `按 ${tag} 篩選本頁信號`,
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
@@ -593,6 +625,9 @@ const JA_DICT: Dictionary = {
     tagline: "海外SaaS収益＆個人開発アイデアレーダー",
     latestBadge: "最新",
     viewDate: (date) => `${date} のシグナルを表示`,
+    jumpToDate: "アーカイブ日付を選択",
+    backToLatestDate: "最新号へ戻る",
+    archiveCount: (count) => `全 ${count} 号`,
     searchDesktop: "領域・MRR・課題を検索... (⌘K)",
     searchMobile: "領域・MRR・課題キーワードを検索...",
     saved: "保存済み",
@@ -643,6 +678,11 @@ const JA_DICT: Dictionary = {
     whatItIs: "📌 概要：",
     monetization: "💵 収益モデル：",
     playbook: "💡 個人開発のヒント：",
+    copyBrief: "コピー",
+    copiedBrief: "コピー済",
+    copyBriefTooltip: "3行要約とパーマリンクをコピー",
+    shareLinkLabel: "🔗 詳細・元記事：",
+    filterByTag: (tag) => `${tag} でこのページを絞り込む`,
     saved: "保存済み",
     save: "保存",
     viewSource: "元記事",

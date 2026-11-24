@@ -4,11 +4,19 @@ import * as schema from "./schema";
 
 type DbInstance = ReturnType<typeof drizzle<typeof schema>>;
 
-let cachedDb: DbInstance | null = null;
+const globalForDb = globalThis as unknown as {
+  __afrCachedDb?: DbInstance | null;
+  __afrCachedDbUrl?: string | null;
+};
+
 let testDbOverride: DbInstance | null = null;
 
 export function setDbForTests(mockDb: unknown | null): void {
   testDbOverride = (mockDb as DbInstance | null) ?? null;
+}
+
+export function isTestDbOverrideActive(): boolean {
+  return testDbOverride !== null;
 }
 
 export function normalizeDatabaseUrl(rawUrl: string): string {
@@ -52,16 +60,17 @@ export function getDb() {
   if (!hasDatabaseConfigured()) {
     return null;
   }
-  if (!cachedDb) {
-    const cleanUrl = normalizeDatabaseUrl(process.env.DATABASE_URL!);
+  const cleanUrl = normalizeDatabaseUrl(process.env.DATABASE_URL!);
+  if (!globalForDb.__afrCachedDb || globalForDb.__afrCachedDbUrl !== cleanUrl) {
     const client = postgres(cleanUrl, {
       prepare: false, // 同时兼容 Supabase Pooler 与 Neon Pooler
-      max: 3,
+      max: 5,
       connect_timeout: 10,
-      idle_timeout: 20,
+      idle_timeout: 60,
       ...(shouldRequireTls(cleanUrl) ? { ssl: "require" as const } : {}),
     });
-    cachedDb = drizzle(client, { schema });
+    globalForDb.__afrCachedDb = drizzle(client, { schema });
+    globalForDb.__afrCachedDbUrl = cleanUrl;
   }
-  return cachedDb;
+  return globalForDb.__afrCachedDb;
 }

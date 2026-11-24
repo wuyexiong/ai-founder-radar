@@ -11,6 +11,7 @@ import {
   translateExistingSignalRow,
 } from "../src/lib/ai-distiller";
 import { sendDailyNewsletterDigests } from "../src/lib/newsletter";
+import { buildIndexNowUrlList } from "../src/lib/revalidate";
 import {
   fetchAppStoreTopGrossing,
   fetchGitHubTrending,
@@ -597,8 +598,11 @@ async function main() {
       summaryTranslations,
     });
 
-    // 自动向 IndexNow (Bing / Yandex / Naver / Seznam) 主动推送今日四语种新链接加速收录
-    await pingIndexNow(today);
+    // 自动向 IndexNow (Bing / Yandex / Naver / Seznam) 主动推送今日四语种首页、归档页及命中的常青专题/信源页
+    await pingIndexNow(
+      today,
+      newlyDistilled.length > 0 ? newlyDistilled : todayAllItems
+    );
   } else {
     console.log(
       `ℹ️ 当前未配置 DATABASE_URL，本次抓取已完成验证（新增四语种提炼 ${newlyDistilled.length} 条）。`
@@ -659,7 +663,7 @@ async function triggerOnDemandRevalidate(
   }
 }
 
-async function pingIndexNow(dateKey: string) {
+async function pingIndexNow(dateKey: string, syncedItems: SignalItem[] = []) {
   const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://radar.aibuildon.com"
   ).replace(/\/$/, "");
@@ -668,11 +672,11 @@ async function pingIndexNow(dateKey: string) {
     const host = new URL(siteUrl).hostname;
     if (host === "localhost" || host.endsWith(".vercel.app")) return;
 
-    const locales = ["en", "zh", "zh-TW", "ja"];
-    const urlList = [
-      ...locales.map((loc) => `${siteUrl}/${loc}`),
-      ...locales.map((loc) => `${siteUrl}/${loc}/daily/${dateKey}`),
-    ];
+    const urlList = buildIndexNowUrlList({
+      siteUrl,
+      dateKey,
+      items: syncedItems,
+    });
 
     const res = await fetch("https://api.indexnow.org/indexnow", {
       method: "POST",

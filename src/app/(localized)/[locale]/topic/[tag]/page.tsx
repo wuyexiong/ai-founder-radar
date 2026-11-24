@@ -56,6 +56,9 @@ export default async function TopicHubPage({ params }: TopicHubPageProps) {
   }
 
   const payload = await getTopicHubPayload(locale, tag);
+  if (payload.items.length === 0) {
+    notFound();
+  }
   const copy = getTopicCopy(tag, locale);
 
   const jsonLd = buildHubJsonLd({

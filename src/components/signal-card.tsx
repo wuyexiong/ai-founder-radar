@@ -1,17 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Bookmark, Calendar, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowUpRight,
+  Bookmark,
+  Calendar,
+  Check,
+  Copy,
+  ExternalLink,
+} from "lucide-react";
 import { type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
 import {
   getTopicCopy,
   isValidTopicSlug,
-  resolveTopicSlugFromTag,
   type TopicSlug,
 } from "@/lib/seo-taxonomy";
-import { cn, formatDeterministicClock, toSafeHttpUrl } from "@/lib/utils";
+import {
+  buildSignalPermalink,
+  cn,
+  formatDeterministicClock,
+  formatSignalShareBrief,
+  toSafeHttpUrl,
+} from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -55,6 +68,7 @@ interface SignalCardProps {
   activeTopicSlug?: string | null;
   archivedDateHref?: string;
   hubDateHref?: string;
+  onSelectTag: (tag: string) => void;
   onToggleBookmark: (item: SignalItem) => void;
 }
 
@@ -68,8 +82,17 @@ export function SignalCard({
   activeTopicSlug,
   archivedDateHref,
   hubDateHref,
+  onSelectTag,
   onToggleBookmark,
 }: SignalCardProps) {
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
   const platform = PLATFORM_META[item.sourcePlatform] ?? {
     label: item.sourcePlatform,
     dotClass: "bg-slate-400",
@@ -94,20 +117,72 @@ export function SignalCard({
     item.titleOrig.trim().toLowerCase() !== item.title.trim().toLowerCase();
   const safeSourceUrl = toSafeHttpUrl(item.sourceUrl);
 
-  // Track which canonical topics are already linked via hashtags so we can surface up to 1 extra topic hub pill
-  const linkedViaHashtag = new Set<TopicSlug>();
-  const tagEntries = item.tags.map((tag) => {
-    const slug = resolveTopicSlugFromTag(tag);
-    if (slug) linkedViaHashtag.add(slug);
-    return { tag, slug };
-  });
-
-  const extraTopicPills = (item.topics ?? [])
-    .filter(
-      (slug): slug is TopicSlug =>
-        isValidTopicSlug(slug) && !linkedViaHashtag.has(slug)
-    )
+  const topicPills = (item.topics ?? [])
+    .filter((slug): slug is TopicSlug => isValidTopicSlug(slug))
     .slice(0, 2);
+
+  const handleCopyBrief = async () => {
+    const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    const origin =
+      configuredOrigin ||
+      (typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "https://radar.aibuildon.com");
+
+    const permalink = buildSignalPermalink({
+      siteUrl: origin,
+      locale,
+      dateKey: item.dateKey,
+      signalId: item.id,
+    });
+
+    const briefText = formatSignalShareBrief({
+      title: item.title,
+      metricsBadge: item.metricsBadge,
+      whatItIsLabel: dict.whatItIs,
+      whatItIs: item.whatItIs,
+      monetizationLabel: dict.monetization,
+      businessSignal: item.businessSignal,
+      playbookLabel: dict.playbook,
+      indieTakeaway: item.indieTakeaway,
+      shareLinkLabel: dict.shareLinkLabel,
+      permalink,
+    });
+
+    let success = false;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(briefText);
+        success = true;
+      }
+    } catch {
+      success = false;
+    }
+
+    if (!success && typeof document !== "undefined") {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = briefText;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        success = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        success = false;
+      }
+    }
+
+    if (success) {
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        setCopied(false);
+      }, 1800);
+    }
+  };
 
   return (
     <article
@@ -236,45 +311,30 @@ export function SignalCard({
         </div>
       </div>
 
-      {/* 第 4 层：底栏语义标签、常青专题内链与操作行 */}
+      {/* 第 4 层：底栏本页切口筛选标签、常青专题 SEO 内链与微裂变操作行 */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          {tagEntries.map(({ tag, slug }) => {
-            const selected =
-              activeTag === tag || Boolean(slug && activeTopicSlug === slug);
-            if (slug) {
-              return (
-                <Link
-                  key={tag}
-                  href={`/${locale}/topic/${slug}`}
-                  className={cn(
-                    "inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
-                    selected
-                      ? "border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
-                      : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
-                  )}
-                >
-                  <span>{tag}</span>
-                  <ArrowUpRight className="h-3 w-3 opacity-60" />
-                </Link>
-              );
-            }
+          {item.tags.map((tag) => {
+            const selected = activeTag === tag;
             return (
-              <span
+              <button
                 key={tag}
+                type="button"
+                onClick={() => onSelectTag(tag)}
+                title={dict.filterByTag(tag)}
                 className={cn(
-                  "select-none rounded-md px-2 py-0.5 text-xs font-medium",
+                  "rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer",
                   selected
-                    ? "border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
-                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                    ? "bg-blue-600 text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
                 )}
               >
                 {tag}
-              </span>
+              </button>
             );
           })}
 
-          {extraTopicPills.map((slug) => {
+          {topicPills.map((slug) => {
             const isCurrent = activeTopicSlug === slug;
             const topicShort = getTopicCopy(slug, locale).shortLabel;
             return (
@@ -295,7 +355,26 @@ export function SignalCard({
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={handleCopyBrief}
+            title={dict.copyBriefTooltip}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+              copied
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800"
+            )}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            <span>{copied ? dict.copiedBrief : dict.copyBrief}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onToggleBookmark(item)}

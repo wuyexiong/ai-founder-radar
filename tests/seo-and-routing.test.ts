@@ -9,7 +9,7 @@ import {
   generateStaticParams as generateDailyStaticParams,
 } from "../src/app/(localized)/[locale]/daily/[date]/page";
 import { generateMetadata as generateHomeMetadata } from "../src/app/(localized)/[locale]/page";
-import {
+import SourceHubPage, {
   generateMetadata as generateSourceMetadata,
   generateStaticParams as generateSourceStaticParams,
 } from "../src/app/(localized)/[locale]/source/[platform]/page";
@@ -602,11 +602,19 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
         "https://radar.aibuildon.com/en/topic/chrome-extension"
       );
 
-      // Empty source hub in local-fallback (acquire): index=false (noindex) to prevent soft-404 / thin content
+      // Empty source hub in local-fallback (acquire): index=false (noindex) in metadata + notFound() 404 in page render
       const emptySourceMeta = await generateSourceMetadata({
         params: Promise.resolve({ locale: "en", platform: "acquire" }),
       });
       assert.deepEqual(emptySourceMeta.robots, { index: false, follow: true });
+
+      await assert.rejects(
+        () =>
+          SourceHubPage({
+            params: Promise.resolve({ locale: "en", platform: "acquire" }),
+          }),
+        /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/
+      );
 
       // Invalid topic/source returns {}
       assert.deepEqual(

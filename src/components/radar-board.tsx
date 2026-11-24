@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Bookmark,
+  Calendar,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -148,7 +150,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     null
   );
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const router = useRouter();
+  const [isDatePending, startDateTransition] = useTransition();
+  const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
   const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [savedSnapshots, setSavedSnapshots] = useState<
@@ -156,11 +162,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   >({});
   const [isDark, setIsDark] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const datePickerRef = useRef<HTMLDivElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const routeKey = hub ? `${hub.kind}:${hub.slug}` : `daily:${activeDate}`;
   const prevRouteKeyRef = useRef(routeKey);
 
-  // 客户端跨专题/日期软路由切换时重置筛选状态
+  // 客户端跨专题/日期软路由切换时重置筛选状态与乐观日期
   useEffect(() => {
     if (prevRouteKeyRef.current !== routeKey) {
       prevRouteKeyRef.current = routeKey;
@@ -168,8 +175,32 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       setActivePlatform(null);
       setActiveTag(null);
       setSearchQuery("");
+      setDatePickerOpen(false);
+      setOptimisticDate(null);
     }
   }, [routeKey, hub]);
+
+  // 点击外部或按 Escape 收起归档日期下拉面板
+  useEffect(() => {
+    if (!datePickerOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (
+        datePickerRef.current &&
+        !datePickerRef.current.contains(e.target as Node)
+      ) {
+        setDatePickerOpen(false);
+      }
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDatePickerOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [datePickerOpen]);
 
   // 初始化主题与跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
   useEffect(() => {
@@ -289,7 +320,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       });
   }, [items, savedSnapshots]);
 
-  // 日期前后切换计算（availableDates 按最新在前排列）
+  // 日期前后切换与按月分组归档计算（availableDates 按最新在前排列）
   const currentDateIdx = availableDates.indexOf(activeDate);
   const olderDate =
     currentDateIdx >= 0 && currentDateIdx < availableDates.length - 1
@@ -297,6 +328,58 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       : null;
   const newerDate =
     currentDateIdx > 0 ? availableDates[currentDateIdx - 1] : null;
+  const displayedDate = optimisticDate ?? activeDate;
+  const isSwitchingDate =
+    isDatePending && Boolean(optimisticDate && optimisticDate !== activeDate);
+
+  // 挂载后立即静默预取前后相邻日期的完整 RSC 数据，确保左右翻页 0ms 秒切
+  useEffect(() => {
+    if (isHubPage) return;
+    if (olderDate) {
+      router.prefetch(buildLocalePath(locale, olderDate, latestDate));
+    }
+    if (newerDate) {
+      router.prefetch(buildLocalePath(locale, newerDate, latestDate));
+    }
+  }, [isHubPage, olderDate, newerDate, locale, latestDate, router]);
+
+  const handleDateLinkClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    targetDate: string,
+    href: string
+  ) => {
+    if (
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      e.altKey
+    ) {
+      return;
+    }
+    e.preventDefault();
+    setDatePickerOpen(false);
+    if (targetDate === activeDate) {
+      setOptimisticDate(null);
+      return;
+    }
+    setOptimisticDate(targetDate);
+    startDateTransition(() => {
+      router.push(href);
+    });
+  };
+
+  const archiveMonths = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const d of availableDates) {
+      const month = d.slice(0, 7);
+      const list = groups.get(month);
+      if (list) list.push(d);
+      else groups.set(month, [d]);
+    }
+    return Array.from(groups.entries());
+  }, [availableDates]);
 
   // 第一级过滤：按当前频道 Tab 过滤的基础集合
   const tabScopedItems = useMemo(() => {
@@ -436,7 +519,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     }
   };
 
-  // 右侧 Top 3 点击联动
+  // 右侧 Top 3 点击与 #sig-xxx 锚点深链统一定位逻辑
   const handleFocusTopItem = (targetItem: SignalItem) => {
     const isCurrentlyVisible = filteredItems.some(
       (i) => i.id === targetItem.id
@@ -452,15 +535,56 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
     highlightTimerRef.current = setTimeout(() => {
       setHighlightedId(null);
-    }, 2200);
+    }, 2400);
 
     setTimeout(() => {
       const el = document.getElementById(targetItem.id);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 50);
+    }, 60);
   };
+
+  // 支持访问 /zh/daily/2026-11-24#sig-xxx 时自动展开非 Top Pick 卡片并平滑高亮定位
+  useEffect(() => {
+    const locateFromHash = () => {
+      if (typeof window === "undefined" || !window.location.hash) return;
+      let targetId = "";
+      try {
+        targetId = decodeURIComponent(window.location.hash.slice(1)).trim();
+      } catch {
+        targetId = window.location.hash.slice(1).trim();
+      }
+      if (!targetId) return;
+
+      const matched = items.find((it) => it.id === targetId);
+      if (!matched) return;
+
+      if (!isHubPage && !matched.isTopPick) {
+        setActiveTab("all");
+        setActivePlatform(null);
+        setActiveTag(null);
+        setSearchQuery("");
+      }
+
+      setHighlightedId(matched.id);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setHighlightedId(null);
+      }, 2600);
+
+      setTimeout(() => {
+        const el = document.getElementById(matched.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 80);
+    };
+
+    locateFromHash();
+    window.addEventListener("hashchange", locateFromHash);
+    return () => window.removeEventListener("hashchange", locateFromHash);
+  }, [items, isHubPage, routeKey]);
 
   const hasSubFilters = Boolean(
     activePlatform || activeTag || searchQuery.trim()
@@ -490,6 +614,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           {/* 品牌标识 */}
           <Link
             href={`/${locale}`}
+            prefetch={true}
             className="flex items-center gap-2.5 shrink-0"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-blue-600">
@@ -509,52 +634,162 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           {isHubPage ? (
             <Link
               href={`/${locale}`}
+              prefetch={true}
               className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-blue-600 sm:inline-flex dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
             >
               {dict.hub.backToLatest}
             </Link>
           ) : (
-            <nav
-              aria-label="Daily archive navigation"
-              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
-            >
-              {olderDate ? (
-                <Link
-                  href={buildLocalePath(locale, olderDate, latestDate)}
-                  title={dict.header.viewDate(olderDate)}
-                  className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </Link>
-              ) : (
-                <span className="p-1 text-slate-300 dark:text-slate-700">
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </span>
-              )}
-
-              <span className="px-1.5 font-mono font-semibold text-slate-800 sm:px-2 dark:text-slate-200">
-                {activeDate}
-                {activeDate === latestDate && (
-                  <span className="ml-1.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
-                    {dict.header.latestBadge}
+            <div ref={datePickerRef} className="relative">
+              <nav
+                aria-label="Daily archive navigation"
+                className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1 py-0.5 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
+              >
+                {olderDate ? (
+                  <Link
+                    href={buildLocalePath(locale, olderDate, latestDate)}
+                    prefetch={true}
+                    onClick={(e) =>
+                      handleDateLinkClick(
+                        e,
+                        olderDate,
+                        buildLocalePath(locale, olderDate, latestDate)
+                      )
+                    }
+                    title={dict.header.viewDate(olderDate)}
+                    className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Link>
+                ) : (
+                  <span className="p-1 text-slate-300 dark:text-slate-700">
+                    <ChevronLeft className="h-3.5 w-3.5" />
                   </span>
                 )}
-              </span>
 
-              {newerDate ? (
-                <Link
-                  href={buildLocalePath(locale, newerDate, latestDate)}
-                  title={dict.header.viewDate(newerDate)}
-                  className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                <button
+                  type="button"
+                  onClick={() => setDatePickerOpen((prev) => !prev)}
+                  aria-expanded={datePickerOpen}
+                  aria-haspopup="dialog"
+                  title={dict.header.jumpToDate}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-mono font-semibold text-slate-800 transition-colors hover:bg-white sm:px-2 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
                 >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
-              ) : (
-                <span className="p-1 text-slate-300 dark:text-slate-700">
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </span>
+                  {isSwitchingDate ? (
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+                  ) : (
+                    <Calendar className="hidden h-3.5 w-3.5 text-slate-400 sm:inline dark:text-slate-500" />
+                  )}
+                  <span>{displayedDate}</span>
+                  {displayedDate === latestDate && (
+                    <span className="ml-0.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+                      {dict.header.latestBadge}
+                    </span>
+                  )}
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 text-slate-400 transition-transform",
+                      datePickerOpen && "rotate-180"
+                    )}
+                  />
+                </button>
+
+                {newerDate ? (
+                  <Link
+                    href={buildLocalePath(locale, newerDate, latestDate)}
+                    prefetch={true}
+                    onClick={(e) =>
+                      handleDateLinkClick(
+                        e,
+                        newerDate,
+                        buildLocalePath(locale, newerDate, latestDate)
+                      )
+                    }
+                    title={dict.header.viewDate(newerDate)}
+                    className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                ) : (
+                  <span className="p-1 text-slate-300 dark:text-slate-700">
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
+                )}
+              </nav>
+
+              {datePickerOpen && (
+                <div
+                  role="dialog"
+                  aria-label={dict.header.jumpToDate}
+                  className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg sm:w-80 dark:border-slate-800 dark:bg-[#111827]"
+                >
+                  <div className="mb-2.5 flex items-center justify-between gap-2 border-b border-slate-100 pb-2 text-xs dark:border-slate-800">
+                    <span className="font-semibold text-slate-600 tabular-nums dark:text-slate-300">
+                      {dict.header.archiveCount(availableDates.length)}
+                    </span>
+                    {latestDate && displayedDate !== latestDate && (
+                      <Link
+                        href={`/${locale}`}
+                        prefetch={true}
+                        onClick={(e) =>
+                          handleDateLinkClick(e, latestDate, `/${locale}`)
+                        }
+                        className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:hover:bg-blue-500/25"
+                      >
+                        {dict.header.backToLatestDate}
+                      </Link>
+                    )}
+                  </div>
+
+                  <div className="thin-scrollbar max-h-64 space-y-3 overflow-y-auto pr-1">
+                    {archiveMonths.map(([month, monthDates], monthIdx) => (
+                      <div key={month}>
+                        <div className="mb-1.5 font-mono text-[11px] font-bold text-slate-400 dark:text-slate-500">
+                          {month}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {monthDates.map((d, idx) => {
+                            const isCurrent = d === displayedDate;
+                            const isLatest = d === latestDate;
+                            const targetHref = buildLocalePath(
+                              locale,
+                              d,
+                              latestDate
+                            );
+                            return (
+                              <Link
+                                key={d}
+                                href={targetHref}
+                                prefetch={monthIdx === 0 && idx < 12 ? true : undefined}
+                                onClick={(e) =>
+                                  handleDateLinkClick(e, d, targetHref)
+                                }
+                                className={cn(
+                                  "flex items-center justify-center gap-1 rounded-md border px-2 py-1 font-mono text-xs font-medium tabular-nums transition-colors",
+                                  isCurrent
+                                    ? "border-slate-900 bg-slate-900 text-white dark:border-blue-500 dark:bg-blue-600 dark:text-white"
+                                    : "border-slate-200/80 bg-slate-50/80 text-slate-700 hover:border-blue-300 hover:bg-blue-50/70 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+                                )}
+                              >
+                                <span>{d.slice(5)}</span>
+                                {isLatest && (
+                                  <span
+                                    className={cn(
+                                      "h-1.5 w-1.5 rounded-full",
+                                      isCurrent ? "bg-emerald-300" : "bg-emerald-500"
+                                    )}
+                                  />
+                                )}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
-            </nav>
+            </div>
           )}
 
           {/* 右侧：搜索框 + 四语种切换胶囊 + 收藏夹 + 主题切换 */}
@@ -594,6 +829,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   <Link
                     key={loc}
                     href={buildSwitcherHref(loc)}
+                    prefetch={true}
                     onClick={() => persistLocaleCookie(loc)}
                     title={info.native}
                     className={cn(
@@ -1030,7 +1266,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
             {/* 信号卡片列表 */}
             {filteredItems.length > 0 ? (
-              <div className="space-y-3.5">
+              <div
+                className={cn(
+                  "space-y-3.5 transition-opacity duration-150",
+                  isSwitchingDate && "opacity-60 pointer-events-none"
+                )}
+              >
                 {filteredItems.map((item) => (
                   <SignalCard
                     key={item.id}
@@ -1051,6 +1292,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                         ? buildLocalePath(locale, item.dateKey, latestDate)
                         : undefined
                     }
+                    onSelectTag={handleSelectTag}
                     onToggleBookmark={toggleBookmark}
                   />
                 ))}

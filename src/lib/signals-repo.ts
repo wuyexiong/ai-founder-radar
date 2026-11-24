@@ -1,11 +1,17 @@
 import { desc, eq } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import localDatasetRaw from "@/data/local-signals.json";
-import { getDb, hasDatabaseConfigured } from "@/db";
+import {
+  getDb,
+  hasDatabaseConfigured,
+  isTestDbOverrideActive,
+} from "@/db";
 import { dailyStats, signalItems } from "@/db/schema";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
+import { SIGNALS_CORPUS_CACHE_TAG } from "@/lib/revalidate";
 import {
   getSourceCopy,
   getTopicCopy,
@@ -87,6 +93,7 @@ interface RawSignalRecord {
   metricsBadge: string;
   metricType: MetricType;
   tags: string[];
+  topics: TopicSlug[];
   score: number;
   isTopPick: boolean;
   sourcePlatform: SourcePlatform;
@@ -96,12 +103,21 @@ interface RawSignalRecord {
   translations?: SignalTranslations | null;
 }
 
+interface RawDailyOverviewRecord {
+  dateKey: string;
+  scannedCount: number;
+  selectedCount: number;
+  estimatedReadMinutes: number;
+  summaryNote: string;
+  summaryTranslations?: SummaryTranslations | null;
+}
+
 function resolveLocalizedSignal(
   base: RawSignalRecord,
   locale: Locale
 ): SignalItem {
   const translations = base.translations ?? {};
-  const matchedTopics = matchCanonicalTopics(base);
+  const matchedTopics = base.topics;
 
   let localized: LocalizedSignalFields;
 
@@ -198,10 +214,102 @@ function resolveLocalizedSummary(
 const ARCHIVE_DATES_LIMIT = 365;
 const HUB_SCAN_WINDOW_LIMIT = 1500;
 const HUB_DISPLAY_ITEMS_LIMIT = 200;
+const CORPUS_CACHE_REVALIDATE_SECONDS = 600;
+const CORPUS_MEMORY_TTL_MS = CORPUS_CACHE_REVALIDATE_SECONDS * 1000;
+
+interface MemoryCacheEntry {
+  expiresAt: number;
+  value: unknown;
+}
+
+const globalForSignalsRepo = globalThis as unknown as {
+  __afrRepoMemoryCache?: Map<string, MemoryCacheEntry>;
+  __afrRepoInFlightCache?: Map<string, Promise<unknown>>;
+};
+
+const repoMemoryCache =
+  globalForSignalsRepo.__afrRepoMemoryCache ??
+  (globalForSignalsRepo.__afrRepoMemoryCache = new Map<
+    string,
+    MemoryCacheEntry
+  >());
+
+const repoInFlightCache =
+  globalForSignalsRepo.__afrRepoInFlightCache ??
+  (globalForSignalsRepo.__afrRepoInFlightCache = new Map<
+    string,
+    Promise<unknown>
+  >());
+
+export function clearSignalsRepoMemoryCache(): void {
+  repoMemoryCache.clear();
+  repoInFlightCache.clear();
+}
+
+async function runWithCorpusCache<T>(
+  cacheKey: string,
+  loader: () => Promise<T>
+): Promise<T> {
+  if (isTestDbOverrideActive()) {
+    return loader();
+  }
+
+  const scopedKey = `${cacheKey}:${hasDatabaseConfigured() ? "supabase" : "local"}`;
+  const now = Date.now();
+  const hit = repoMemoryCache.get(scopedKey);
+  if (hit && hit.expiresAt > now) {
+    return hit.value as T;
+  }
+
+  const pending = repoInFlightCache.get(scopedKey);
+  if (pending) {
+    return pending as Promise<T>;
+  }
+
+  const execute = (async (): Promise<T> => {
+    let result: T;
+    try {
+      const nextCachedLoader = unstable_cache(loader, [scopedKey], {
+        revalidate: CORPUS_CACHE_REVALIDATE_SECONDS,
+        tags: [SIGNALS_CORPUS_CACHE_TAG],
+      });
+      result = await nextCachedLoader();
+    } catch {
+      // Standalone CLI / node:test environment without Next.js incrementalCache store
+      result = await loader();
+    }
+
+    repoMemoryCache.set(scopedKey, {
+      expiresAt: Date.now() + CORPUS_MEMORY_TTL_MS,
+      value: result,
+    });
+    return result;
+  })();
+
+  repoInFlightCache.set(scopedKey, execute);
+  try {
+    return await execute;
+  } finally {
+    repoInFlightCache.delete(scopedKey);
+  }
+}
 
 function mapDbRowToRawRecord(
   row: typeof signalItems.$inferSelect
 ): RawSignalRecord {
+  const tags = row.tags ?? [];
+  const candidate = {
+    titleZh: row.titleZh,
+    titleOrig: row.titleOrig,
+    whatItIs: row.whatItIs,
+    businessSignal: row.businessSignal,
+    indieTakeaway: row.indieTakeaway,
+    tags,
+    sourcePlatform: row.sourcePlatform as SourcePlatform,
+    sourceSublabel: row.sourceSublabel,
+    translations: row.translations,
+  };
+
   return {
     id: row.id,
     dateKey: row.dateKey,
@@ -213,7 +321,8 @@ function mapDbRowToRawRecord(
     indieTakeaway: row.indieTakeaway,
     metricsBadge: row.metricsBadge,
     metricType: row.metricType as MetricType,
-    tags: row.tags ?? [],
+    tags,
+    topics: matchCanonicalTopics(candidate),
     score: row.score,
     isTopPick: row.isTopPick,
     sourcePlatform: row.sourcePlatform as SourcePlatform,
@@ -234,53 +343,59 @@ function getLocalRawRecords(): RawSignalRecord[] {
     })
     .map((item) => ({
       ...item,
+      topics: matchCanonicalTopics(item),
       publishedAt: item.publishedAt,
     }));
+}
+
+async function loadRecentRawSignalsUncached(): Promise<{
+  storageMode: "supabase" | "local-fallback";
+  records: RawSignalRecord[];
+}> {
+  const db = getDb();
+  if (db && hasDatabaseConfigured()) {
+    try {
+      const rows = await db
+        .select()
+        .from(signalItems)
+        .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
+        .limit(HUB_SCAN_WINDOW_LIMIT);
+
+      if (rows.length > 0) {
+        return {
+          storageMode: "supabase",
+          records: rows.map(mapDbRowToRawRecord),
+        };
+      }
+    } catch (error) {
+      const safeMsg =
+        error instanceof Error
+          ? error.message.replace(
+              /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
+              "$1***@"
+            )
+          : "Database query error";
+      console.warn(
+        "[AI Founder Radar] Hub corpus query failed, falling back to local dataset:",
+        safeMsg
+      );
+    }
+  }
+
+  return {
+    storageMode: "local-fallback",
+    records: getLocalRawRecords(),
+  };
 }
 
 const getRecentRawSignals = cache(
   async (): Promise<{
     storageMode: "supabase" | "local-fallback";
     records: RawSignalRecord[];
-  }> => {
-    const db = getDb();
-    if (db && hasDatabaseConfigured()) {
-      try {
-        const rows = await db
-          .select()
-          .from(signalItems)
-          .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
-          .limit(HUB_SCAN_WINDOW_LIMIT);
-
-        if (rows.length > 0) {
-          return {
-            storageMode: "supabase",
-            records: rows.map(mapDbRowToRawRecord),
-          };
-        }
-      } catch (error) {
-        const safeMsg =
-          error instanceof Error
-            ? error.message.replace(
-                /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
-                "$1***@"
-              )
-            : "Database query error";
-        console.warn(
-          "[AI Founder Radar] Hub corpus query failed, falling back to local dataset:",
-          safeMsg
-        );
-      }
-    }
-
-    return {
-      storageMode: "local-fallback",
-      records: getLocalRawRecords(),
-    };
-  }
+  }> => runWithCorpusCache("afr-recent-raw-signals-v1", loadRecentRawSignalsUncached)
 );
 
-export const getSeoHubIndex = cache(async (): Promise<HubDirectory> => {
+async function computeSeoHubIndexUncached(): Promise<HubDirectory> {
   const { records } = await getRecentRawSignals();
 
   const topicMap = new Map<TopicSlug, ActiveTopicStat>();
@@ -307,9 +422,8 @@ export const getSeoHubIndex = cache(async (): Promise<HubDirectory> => {
       }
     }
 
-    // Canonical Topic aggregation
-    const topics = matchCanonicalTopics(record);
-    for (const slug of topics) {
+    // Canonical Topic aggregation (uses pre-computed topics on RawSignalRecord)
+    for (const slug of record.topics) {
       const prevTopic = topicMap.get(slug);
       if (!prevTopic) {
         topicMap.set(slug, {
@@ -339,26 +453,83 @@ export const getSeoHubIndex = cache(async (): Promise<HubDirectory> => {
     .sort((a, b) => b.count - a.count);
 
   return { topics, sources };
-});
+}
 
-export const getAllAvailableDates = cache(async (): Promise<string[]> => {
+export const getSeoHubIndex = cache(
+  async (): Promise<HubDirectory> =>
+    runWithCorpusCache("afr-seo-hub-index-v1", computeSeoHubIndexUncached)
+);
+
+async function loadAllDailyOverviewsUncached(): Promise<{
+  storageMode: "supabase" | "local-fallback";
+  overviews: RawDailyOverviewRecord[];
+}> {
   const db = getDb();
   if (db && hasDatabaseConfigured()) {
     try {
       const statsRows = await db
-        .select({ dateKey: dailyStats.dateKey })
+        .select()
         .from(dailyStats)
         .orderBy(desc(dailyStats.dateKey))
         .limit(ARCHIVE_DATES_LIMIT);
+
       if (statsRows.length > 0) {
-        return statsRows.map((r) => r.dateKey);
+        return {
+          storageMode: "supabase",
+          overviews: statsRows.map((r) => ({
+            dateKey: r.dateKey,
+            scannedCount: r.scannedCount,
+            selectedCount: r.selectedCount,
+            estimatedReadMinutes: r.estimatedReadMinutes,
+            summaryNote: r.summaryNote,
+            summaryTranslations: r.summaryTranslations,
+          })),
+        };
       }
     } catch {
-      // ignore and fall back to local dates
+      // ignore and fall back to local overviews
     }
   }
-  return localDataset.overviews.map((o) => o.dateKey);
-});
+
+  return {
+    storageMode: "local-fallback",
+    overviews: localDataset.overviews.map((o) => ({
+      dateKey: o.dateKey,
+      scannedCount: o.scannedCount,
+      selectedCount: o.selectedCount,
+      estimatedReadMinutes: o.estimatedReadMinutes,
+      summaryNote: o.summaryNote,
+      summaryTranslations: o.summaryTranslations,
+    })),
+  };
+}
+
+const getAllDailyOverviews = cache(
+  async (): Promise<{
+    storageMode: "supabase" | "local-fallback";
+    overviews: RawDailyOverviewRecord[];
+  }> => runWithCorpusCache("afr-daily-overviews-v1", loadAllDailyOverviewsUncached)
+);
+
+export const getAllAvailableDates = cache(
+  async (): Promise<string[]> => {
+    const { overviews } = await getAllDailyOverviews();
+    return overviews.map((o) => o.dateKey);
+  }
+);
+
+async function loadDateRawRecordsByQuery(
+  dateKey: string
+): Promise<RawSignalRecord[]> {
+  const db = getDb();
+  if (!db || !hasDatabaseConfigured()) return [];
+  const rows = await db
+    .select()
+    .from(signalItems)
+    .where(eq(signalItems.dateKey, dateKey))
+    .orderBy(desc(signalItems.score));
+  return rows.map(mapDbRowToRawRecord);
+}
 
 export const getRadarPayload = cache(
   async (
@@ -367,76 +538,96 @@ export const getRadarPayload = cache(
   ): Promise<RadarPagePayload> => {
     const dict = getDictionary(locale);
     const localizedTools = dict.sidebar.tools;
-    const hubDirectory = await getSeoHubIndex();
-    const db = getDb();
+    const [hubDirectory, dailyMeta, corpus] = await Promise.all([
+      getSeoHubIndex(),
+      getAllDailyOverviews(),
+      getRecentRawSignals(),
+    ]);
 
-    if (db && hasDatabaseConfigured()) {
+    if (
+      dailyMeta.storageMode === "supabase" &&
+      dailyMeta.overviews.length > 0
+    ) {
       try {
-        const dateRows = await db
-          .select({ dateKey: dailyStats.dateKey })
-          .from(dailyStats)
-          .orderBy(desc(dailyStats.dateKey))
-          .limit(ARCHIVE_DATES_LIMIT);
+        const availableDates = dailyMeta.overviews.map((o) => o.dateKey);
+        let activeOverviewRow: RawDailyOverviewRecord | undefined =
+          requestedDate
+            ? dailyMeta.overviews.find((o) => o.dateKey === requestedDate)
+            : undefined;
 
-        if (dateRows.length > 0) {
-          const availableDates = dateRows.map((r) => r.dateKey);
-          let activeOverviewRow:
-            | (typeof dailyStats.$inferSelect)
-            | undefined = undefined;
-
-          if (requestedDate) {
+        // 仅当历史归档超过 365 天上限时按需单点回查一次 daily_stats
+        const oldestCachedOverviewDate =
+          availableDates[availableDates.length - 1];
+        if (
+          !activeOverviewRow &&
+          requestedDate &&
+          dailyMeta.overviews.length >= ARCHIVE_DATES_LIMIT &&
+          oldestCachedOverviewDate &&
+          requestedDate < oldestCachedOverviewDate
+        ) {
+          const db = getDb();
+          if (db) {
             const exactRows = await db
               .select()
               .from(dailyStats)
               .where(eq(dailyStats.dateKey, requestedDate))
               .limit(1);
-            activeOverviewRow = exactRows[0];
-          }
-
-          if (!activeOverviewRow) {
-            const latestRows = await db
-              .select()
-              .from(dailyStats)
-              .where(eq(dailyStats.dateKey, availableDates[0]))
-              .limit(1);
-            activeOverviewRow = latestRows[0];
-          }
-
-          if (activeOverviewRow) {
-            const activeDate = activeOverviewRow.dateKey;
-            const dbItems = await db
-              .select()
-              .from(signalItems)
-              .where(eq(signalItems.dateKey, activeDate))
-              .orderBy(desc(signalItems.score));
-
-            const mappedItems: SignalItem[] = dbItems.map((row) =>
-              resolveLocalizedSignal(mapDbRowToRawRecord(row), locale)
-            );
-
-            return {
-              locale,
-              storageMode: "supabase",
-              availableDates,
-              activeDate,
-              overview: {
-                dateKey: activeOverviewRow.dateKey,
-                scannedCount: activeOverviewRow.scannedCount,
-                selectedCount: activeOverviewRow.selectedCount,
-                estimatedReadMinutes: activeOverviewRow.estimatedReadMinutes,
-                summaryNote: resolveLocalizedSummary(
-                  activeOverviewRow.summaryNote,
-                  activeOverviewRow.summaryTranslations,
-                  locale,
-                  activeOverviewRow.selectedCount
-                ),
-              },
-              items: mappedItems,
-              tools: localizedTools,
-              hubDirectory,
-            };
+            if (exactRows[0]) {
+              activeOverviewRow = {
+                dateKey: exactRows[0].dateKey,
+                scannedCount: exactRows[0].scannedCount,
+                selectedCount: exactRows[0].selectedCount,
+                estimatedReadMinutes: exactRows[0].estimatedReadMinutes,
+                summaryNote: exactRows[0].summaryNote,
+                summaryTranslations: exactRows[0].summaryTranslations,
+              };
+            }
           }
         }
+
+        if (!activeOverviewRow) {
+          activeOverviewRow = dailyMeta.overviews[0];
+        }
+
+        const activeDate = activeOverviewRow.dateKey;
+        const oldestCorpusDate =
+          corpus.records[corpus.records.length - 1]?.dateKey;
+        const isFullyCoveredInCorpus =
+          corpus.storageMode === "supabase" &&
+          (corpus.records.length < HUB_SCAN_WINDOW_LIMIT ||
+            (Boolean(oldestCorpusDate) && activeDate > oldestCorpusDate));
+
+        const dayRawRecords = isFullyCoveredInCorpus
+          ? corpus.records.filter((r) => r.dateKey === activeDate)
+          : await runWithCorpusCache(`afr-day-items-v1:${activeDate}`, () =>
+              loadDateRawRecordsByQuery(activeDate)
+            );
+
+        const mappedItems: SignalItem[] = dayRawRecords.map((rec) =>
+          resolveLocalizedSignal(rec, locale)
+        );
+
+        return {
+          locale,
+          storageMode: "supabase",
+          availableDates,
+          activeDate,
+          overview: {
+            dateKey: activeOverviewRow.dateKey,
+            scannedCount: activeOverviewRow.scannedCount,
+            selectedCount: activeOverviewRow.selectedCount,
+            estimatedReadMinutes: activeOverviewRow.estimatedReadMinutes,
+            summaryNote: resolveLocalizedSummary(
+              activeOverviewRow.summaryNote,
+              activeOverviewRow.summaryTranslations,
+              locale,
+              activeOverviewRow.selectedCount
+            ),
+          },
+          items: mappedItems,
+          tools: localizedTools,
+          hubDirectory,
+        };
       } catch (error) {
         const safeMsg =
           error instanceof Error
@@ -462,18 +653,9 @@ export const getRadarPayload = cache(
       localDataset.overviews.find((o) => o.dateKey === activeDate) ??
       localDataset.overviews[0];
 
-    const items = localDataset.items
+    const items = corpus.records
       .filter((item) => item.dateKey === activeDate)
-      .sort((a, b) => b.score - a.score)
-      .map((item) =>
-        resolveLocalizedSignal(
-          {
-            ...item,
-            publishedAt: item.publishedAt,
-          },
-          locale
-        )
-      );
+      .map((item) => resolveLocalizedSignal(item, locale));
 
     return {
       locale,
@@ -588,7 +770,7 @@ export const getTopicHubPayload = cache(
 
     const copy = getTopicCopy(slug, locale);
     const matchedRecords = corpus.records.filter((rec) =>
-      matchCanonicalTopics(rec).includes(slug)
+      rec.topics.includes(slug)
     );
 
     return buildHubPayloadFromMatchedRecords({
@@ -612,50 +794,64 @@ export const getSourceHubPayload = cache(
     locale: Locale,
     platform: SourcePlatform
   ): Promise<RadarPagePayload> => {
-    const [availableDates, hubDirectory] = await Promise.all([
+    const [availableDates, hubDirectory, corpus] = await Promise.all([
       getAllAvailableDates(),
       getSeoHubIndex(),
+      getRecentRawSignals(),
     ]);
     const copy = getSourceCopy(platform, locale);
 
-    const db = getDb();
-    if (db && hasDatabaseConfigured()) {
-      try {
-        const rows = await db
-          .select()
-          .from(signalItems)
-          .where(eq(signalItems.sourcePlatform, platform))
-          .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
-          .limit(HUB_DISPLAY_ITEMS_LIMIT);
+    // 当语料窗口未触及 1500 条截断上限时，直接从内存零查询切片返回
+    if (corpus.records.length < HUB_SCAN_WINDOW_LIMIT) {
+      const matchedRecords = corpus.records.filter(
+        (rec) => rec.sourcePlatform === platform
+      );
+      return buildHubPayloadFromMatchedRecords({
+        locale,
+        storageMode: corpus.storageMode,
+        availableDates,
+        hubDirectory,
+        kind: "source",
+        slug: platform,
+        label: copy.label,
+        seoTitle: copy.seoTitle,
+        h1: copy.h1,
+        description: copy.description,
+        matchedRecords,
+      });
+    }
 
-        // Only treat Supabase as active when dailyStats has data; otherwise local fallback may apply
-        if (rows.length > 0 || availableDates.length > 0) {
-          const statsCheck = await db
-            .select({ dateKey: dailyStats.dateKey })
-            .from(dailyStats)
-            .limit(1);
-          if (statsCheck.length > 0) {
-            return buildHubPayloadFromMatchedRecords({
-              locale,
-              storageMode: "supabase",
-              availableDates,
-              hubDirectory,
-              kind: "source",
-              slug: platform,
-              label: copy.label,
-              seoTitle: copy.seoTitle,
-              h1: copy.h1,
-              description: copy.description,
-              matchedRecords: rows.map(mapDbRowToRawRecord),
-            });
-          }
-        }
+    const db = getDb();
+    if (db && hasDatabaseConfigured() && corpus.storageMode === "supabase") {
+      try {
+        const rows = await runWithCorpusCache(
+          `afr-source-items-v1:${platform}`,
+          () =>
+            db
+              .select()
+              .from(signalItems)
+              .where(eq(signalItems.sourcePlatform, platform))
+              .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
+              .limit(HUB_DISPLAY_ITEMS_LIMIT)
+        );
+        return buildHubPayloadFromMatchedRecords({
+          locale,
+          storageMode: "supabase",
+          availableDates,
+          hubDirectory,
+          kind: "source",
+          slug: platform,
+          label: copy.label,
+          seoTitle: copy.seoTitle,
+          h1: copy.h1,
+          description: copy.description,
+          matchedRecords: rows.map(mapDbRowToRawRecord),
+        });
       } catch {
-        // Fall through to cached corpus / local dataset
+        // Fall through to cached corpus slice
       }
     }
 
-    const corpus = await getRecentRawSignals();
     const matchedRecords = corpus.records.filter(
       (rec) => rec.sourcePlatform === platform
     );

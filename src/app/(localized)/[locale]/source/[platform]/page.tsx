@@ -56,6 +56,9 @@ export default async function SourceHubPage({ params }: SourceHubPageProps) {
   }
 
   const payload = await getSourceHubPayload(locale, platform);
+  if (payload.items.length === 0) {
+    notFound();
+  }
   const copy = getSourceCopy(platform, locale);
 
   const jsonLd = buildHubJsonLd({

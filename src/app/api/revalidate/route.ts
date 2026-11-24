@@ -1,9 +1,11 @@
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   collectRevalidatePaths,
   isAuthorizedRevalidateToken,
+  SIGNALS_CORPUS_CACHE_TAG,
 } from "@/lib/revalidate";
+import { clearSignalsRepoMemoryCache } from "@/lib/signals-repo";
 
 export async function POST(request: NextRequest) {
   const secret = process.env.REVALIDATE_SECRET?.trim();
@@ -38,6 +40,8 @@ export async function POST(request: NextRequest) {
     typeof body.previousDateKey === "string" ? body.previousDateKey : undefined;
 
   const paths = collectRevalidatePaths(dateKey, previousDateKey);
+  clearSignalsRepoMemoryCache();
+  revalidateTag(SIGNALS_CORPUS_CACHE_TAG);
   for (const p of paths) {
     revalidatePath(p);
   }
@@ -49,6 +53,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       ok: true,
+      revalidatedTag: SIGNALS_CORPUS_CACHE_TAG,
       revalidated: [
         ...paths,
         "/[locale]/daily/[date]",

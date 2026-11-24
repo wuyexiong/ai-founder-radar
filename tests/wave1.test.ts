@@ -8,8 +8,10 @@ import { POST as subscribePost } from "../src/app/api/newsletter/subscribe/route
 import { GET as unsubscribeGet } from "../src/app/api/newsletter/unsubscribe/route";
 import { POST as revalidatePost } from "../src/app/api/revalidate/route";
 import {
+  buildIndexNowUrlList,
   collectRevalidatePaths,
   isAuthorizedRevalidateToken,
+  SIGNALS_CORPUS_CACHE_TAG,
 } from "../src/lib/revalidate";
 import { middleware } from "../src/middleware";
 import {
@@ -31,8 +33,18 @@ import { fetchViaJinaMarkdown } from "../src/lib/collectors/jina";
 import { isSafePublicHttpUrl } from "../src/lib/collectors/sources";
 import { localizeSourceSublabel } from "../src/lib/localize-sublabel";
 import { normalizeAndValidateEmail } from "../src/lib/newsletter";
-import { getAllAvailableDates, getRadarPayload } from "../src/lib/signals-repo";
-import { formatDeterministicClock, toSafeHttpUrl } from "../src/lib/utils";
+import {
+  clearSignalsRepoMemoryCache,
+  getAllAvailableDates,
+  getRadarPayload,
+  getSeoHubIndex,
+} from "../src/lib/signals-repo";
+import {
+  buildSignalPermalink,
+  formatDeterministicClock,
+  formatSignalShareBrief,
+  toSafeHttpUrl,
+} from "../src/lib/utils";
 import { toTraditionalTw } from "../src/lib/zh-convert";
 
 const HAS_SIMPLIFIED_CHINESE_RE = /[\u4e00-\u9fff]/;
@@ -244,6 +256,14 @@ test("local-fallback dataset & all 4 locale dictionaries are internally consiste
     for (const locale of LOCALES) {
       const dict = getDictionary(locale);
       assert.ok(dict.tabs.ai_trend.length > 0);
+      assert.ok(dict.header.jumpToDate.length > 0);
+      assert.ok(dict.header.backToLatestDate.length > 0);
+      assert.ok(dict.header.archiveCount(12).includes("12"));
+      assert.ok(dict.card.copyBrief.length > 0);
+      assert.ok(dict.card.copiedBrief.length > 0);
+      assert.ok(dict.card.copyBriefTooltip.length > 0);
+      assert.ok(dict.card.shareLinkLabel.length > 0);
+      assert.ok(dict.card.filterByTag("#SaaS").includes("#SaaS"));
       assert.ok(dict.sidebar.newsletterLocalDemo.length > 0);
       assert.ok(dict.notFound.title.length > 0);
       assert.ok(dict.errorPage.title.length > 0);
@@ -384,6 +404,47 @@ test("on-demand revalidate API enforces secret auth and collects localized paths
   assert.ok(paths.includes("/en/daily/2026-11-24"));
   assert.ok(paths.includes("/zh/daily/2026-11-23"));
   assert.ok(paths.includes("/sitemap.xml"));
+  assert.equal(SIGNALS_CORPUS_CACHE_TAG, "signals-corpus");
+
+  // IndexNow URL list expands touched canonical topic & source hubs across all 4 locales
+  const indexNowUrls = buildIndexNowUrlList({
+    siteUrl: "https://radar.aibuildon.com/",
+    dateKey: "2026-11-24",
+    items: [
+      {
+        titleZh: "Shopify 卖家 Chrome 插件达到 $12k MRR",
+        titleOrig: "Shopify seller Chrome extension hits $12k MRR",
+        whatItIs: "自动化商品背景图生成插件",
+        businessSignal: "$19/mo Stripe 订阅",
+        indieTakeaway: "切入 Shopify 垂直小插件",
+        tags: ["#Chrome插件", "#Shopify"],
+        sourcePlatform: "trustmrr",
+        sourceSublabel: "TrustMRR 实名榜",
+      },
+    ],
+  });
+  assert.ok(indexNowUrls.includes("https://radar.aibuildon.com/zh"));
+  assert.ok(
+    indexNowUrls.includes("https://radar.aibuildon.com/en/daily/2026-11-24")
+  );
+  assert.ok(
+    indexNowUrls.includes(
+      "https://radar.aibuildon.com/zh/topic/chrome-extension"
+    )
+  );
+  assert.ok(
+    indexNowUrls.includes("https://radar.aibuildon.com/ja/topic/shopify")
+  );
+  assert.ok(
+    indexNowUrls.includes("https://radar.aibuildon.com/zh-TW/topic/stripe")
+  );
+  assert.ok(
+    indexNowUrls.includes("https://radar.aibuildon.com/en/source/trustmrr")
+  );
+  assert.equal(
+    indexNowUrls.some((u) => u.endsWith("/source/reddit")),
+    false
+  );
 
   const prevSecret = process.env.REVALIDATE_SECRET;
   delete process.env.REVALIDATE_SECRET;
@@ -598,4 +659,72 @@ test("GitHub dual-metric badges across all 4 locales are locked and never overwr
       else process.env[k] = v;
     }
   }
+});
+
+test("buildSignalPermalink, formatSignalShareBrief, and corpus memory cache behave deterministically", async () => {
+  const permalink = buildSignalPermalink({
+    siteUrl: "https://radar.aibuildon.com/",
+    locale: "zh",
+    dateKey: "2026-11-24",
+    signalId: "sig-abc123def456",
+  });
+  assert.equal(
+    permalink,
+    "https://radar.aibuildon.com/zh/daily/2026-11-24#sig-abc123def456"
+  );
+
+  const zhDict = getDictionary("zh").card;
+  const brief = formatSignalShareBrief({
+    title: "单人 Chrome 插件月入 $18k",
+    metricsBadge: "$18k MRR",
+    whatItIsLabel: zhDict.whatItIs,
+    whatItIs: "帮助独立站卖家一键批量去背景。",
+    monetizationLabel: zhDict.monetization,
+    businessSignal: "$15/月订阅，纯靠商店自然搜索获客。",
+    playbookLabel: zhDict.playbook,
+    indieTakeaway: "高频刚需微工具 + 应用商店 SEO 依然稳健。",
+    shareLinkLabel: zhDict.shareLinkLabel,
+    permalink,
+  });
+
+  const lines = brief.split("\n");
+  assert.equal(lines.length, 5);
+  assert.equal(lines[0], "[$18k MRR] 单人 Chrome 插件月入 $18k");
+  assert.ok(lines[1].startsWith("📌 是什么："));
+  assert.ok(lines[2].startsWith("💵 怎么赚："));
+  assert.ok(lines[3].startsWith("💡 抄作业："));
+  assert.ok(lines[4].includes(permalink));
+
+  // Verify corpus memory cache reuse & explicit invalidation
+  clearSignalsRepoMemoryCache();
+  const hubA = await getSeoHubIndex();
+  const hubB = await getSeoHubIndex();
+  assert.equal(hubA, hubB, "Repeated getSeoHubIndex calls should hit memory cache");
+
+  clearSignalsRepoMemoryCache();
+  const hubC = await getSeoHubIndex();
+  assert.deepEqual(hubA, hubC);
+  assert.notEqual(
+    hubA,
+    hubC,
+    "After clearSignalsRepoMemoryCache, fresh HubDirectory object is computed"
+  );
+
+  // Verify globalThis shared cache & Next.js client router staleTimes config for fast date switching
+  const globalCache = (
+    globalThis as unknown as { __afrRepoMemoryCache?: Map<string, unknown> }
+  ).__afrRepoMemoryCache;
+  assert.ok(globalCache && globalCache.size > 0);
+  assert.equal(nextConfig.experimental?.staleTimes?.dynamic, 60);
+  assert.equal(nextConfig.experimental?.staleTimes?.static, 300);
+
+  const dates = await getAllAvailableDates();
+  const t0 = performance.now();
+  const day0 = await getRadarPayload("zh", dates[0]);
+  const day1 = await getRadarPayload("zh", dates[1]);
+  const elapsedMs = performance.now() - t0;
+  assert.notEqual(day0.activeDate, day1.activeDate);
+  assert.ok(day0.items.every((i) => i.dateKey === dates[0]));
+  assert.ok(day1.items.every((i) => i.dateKey === dates[1]));
+  assert.ok(elapsedMs < 50, `Expected <50ms warm date switch, got ${elapsedMs}ms`);
 });
