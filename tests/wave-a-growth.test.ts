@@ -18,7 +18,12 @@ import { NewsletterSubscribeCard } from "../src/components/newsletter-subscribe-
 import { HREFLANG_MAP, LOCALES } from "../src/i18n/config";
 import { getDictionary } from "../src/i18n/dictionaries";
 import { trackRadarEvent } from "../src/lib/analytics";
-import { buildRssFeedXml, escapeXml } from "../src/lib/feeds";
+import {
+  buildRssFeedXml,
+  escapeXml,
+  FOLO_FEED_IDS,
+  FOLO_USER_ID,
+} from "../src/lib/feeds";
 import { collectRevalidatePaths } from "../src/lib/revalidate";
 import {
   clearSignalsRepoMemoryCache,
@@ -49,6 +54,14 @@ describe("Package A Growth Engine: RSS 2.0, llms.txt, Analytics, UTM & Cache/SSR
       const staticParams = generateRssStaticParams();
       assert.equal(staticParams.length, LOCALES.length);
 
+      assert.equal(FOLO_USER_ID, "1392517160695285734");
+      assert.deepEqual(FOLO_FEED_IDS, {
+        zh: "1392517834419144145",
+        "zh-TW": "1392519475190688121",
+        ja: "1392520234191246987",
+        en: "1392518752146427301",
+      });
+
       for (const locale of LOCALES) {
         const res = await getRssFeed(
           new Request(`https://radar.aibuildon.com/${locale}/feed.xml`),
@@ -67,8 +80,32 @@ describe("Package A Growth Engine: RSS 2.0, llms.txt, Analytics, UTM & Cache/SSR
             `href="https://radar.aibuildon.com/${locale}/feed.xml" rel="self"`
           )
         );
-        assert.ok(xml.includes("utm_source=rss#"));
-        assert.ok(xml.includes("<item>"));
+        assert.ok(
+          xml.includes(
+            [
+              "    <follow_challenge>",
+              `      <feedId>${FOLO_FEED_IDS[locale]}</feedId>`,
+              `      <userId>${FOLO_USER_ID}</userId>`,
+              "    </follow_challenge>",
+            ].join("\n")
+          ),
+          `Missing or mismatched <follow_challenge> block for locale=${locale}`
+        );
+        assert.ok(
+          xml.includes(`https://radar.aibuildon.com/${locale}/signal/sig-`)
+        );
+        assert.ok(xml.includes("?utm_source=rss</link>"));
+
+        // Regression guard: ensure RSS readers (like Folo) that strip ?utm_* and #hash never collapse same-day items
+        const itemLinks = Array.from(
+          xml.matchAll(/<item>[\s\S]*?<link>([^<]+)<\/link>[\s\S]*?<\/item>/g),
+          (m) => m[1]
+        );
+        assert.ok(itemLinks.length >= 10);
+        const normalizedLinks = new Set(
+          itemLinks.map((u) => u.split("#")[0]!.split("?")[0]!)
+        );
+        assert.equal(normalizedLinks.size, itemLinks.length);
 
         // Verify <head> RSS autodiscovery metadata on localized home & hub pages
         const homeMeta = await generateHomeMetadata({

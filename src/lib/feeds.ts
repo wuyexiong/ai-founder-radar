@@ -2,8 +2,23 @@ import { HREFLANG_MAP, LOCALES, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getSourceCopy, getTopicCopy } from "@/lib/seo-taxonomy";
 import type { HubDirectory } from "@/lib/signals-repo";
-import { buildSignalPermalink, toSafeHttpUrl } from "@/lib/utils";
+import {
+  buildSignalDetailUrl,
+  buildSignalPermalink,
+  toSafeHttpUrl,
+} from "@/lib/utils";
 import type { DailyOverview, SignalItem } from "@/types/signal";
+
+export const FOLO_USER_ID = "1392517160695285734";
+
+export const FOLO_FEED_IDS: Record<Locale, string> = {
+  zh: "1392517834419144145",
+  "zh-TW": "1392519475190688121",
+  ja: "1392520234191246987",
+  en: "1392518752146427301",
+};
+
+const VALID_SIGNAL_ID_RE = /^sig-[a-zA-Z0-9_-]{2,80}$/;
 
 export function escapeXml(raw: string): string {
   return raw
@@ -49,13 +64,21 @@ export function buildRssFeedXml(params: {
 
   const itemsXml = params.items
     .map((item) => {
-      const permalink = buildSignalPermalink({
-        siteUrl: base,
-        locale: params.locale,
-        dateKey: item.dateKey,
-        signalId: item.id,
-        utmSource: "rss",
-      });
+      const trimmedId = item.id.trim();
+      const permalink = VALID_SIGNAL_ID_RE.test(trimmedId)
+        ? buildSignalDetailUrl({
+            siteUrl: base,
+            locale: params.locale,
+            signalId: trimmedId,
+            utmSource: "rss",
+          })
+        : buildSignalPermalink({
+            siteUrl: base,
+            locale: params.locale,
+            dateKey: item.dateKey,
+            signalId: item.id,
+            utmSource: "rss",
+          });
       const safeSource = toSafeHttpUrl(item.sourceUrl);
       const sourceHref = safeSource === "#" ? permalink : safeSource;
       const badgePrefix = item.metricsBadge.trim()
@@ -92,6 +115,17 @@ export function buildRssFeedXml(params: {
     })
     .join("\n");
 
+  const foloFeedId = FOLO_FEED_IDS[params.locale];
+  const foloChallengeXml =
+    foloFeedId && FOLO_USER_ID
+      ? [
+          "    <follow_challenge>",
+          `      <feedId>${escapeXml(foloFeedId)}</feedId>`,
+          `      <userId>${escapeXml(FOLO_USER_ID)}</userId>`,
+          "    </follow_challenge>",
+        ].join("\n")
+      : "";
+
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
@@ -103,11 +137,14 @@ export function buildRssFeedXml(params: {
     `    <lastBuildDate>${escapeXml(lastBuildDate)}</lastBuildDate>`,
     "    <ttl>60</ttl>",
     `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />`,
+    foloChallengeXml,
     itemsXml,
     "  </channel>",
     "</rss>",
     "",
-  ].join("\n");
+  ]
+    .filter((segment) => segment !== "")
+    .join("\n");
 }
 
 export function buildLlmsTxt(params: {
