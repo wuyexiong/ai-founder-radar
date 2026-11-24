@@ -27,6 +27,8 @@ export function middleware(request: NextRequest) {
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||
     pathname === "/manifest.webmanifest" ||
+    pathname === "/og" ||
+    pathname.startsWith("/og/") ||
     pathname.startsWith("/opengraph-image") ||
     pathname.startsWith("/icon") ||
     pathname.startsWith("/apple-icon") ||

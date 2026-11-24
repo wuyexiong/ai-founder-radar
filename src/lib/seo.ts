@@ -30,6 +30,9 @@ export function buildRadarMetadata({
   const canonicalPath = isArchiveRoute
     ? `/${locale}/daily/${dateKey}`
     : `/${locale}`;
+  const ogImagePath = isArchiveRoute
+    ? `/og/${locale}/daily/${dateKey}`
+    : `/og/${locale}`;
 
   const title = isArchiveRoute
     ? dict.meta.dailyTitle(dateKey, items[0]?.title, items.length)
@@ -70,10 +73,10 @@ export function buildRadarMetadata({
       type: "website",
       images: [
         {
-          url: "/opengraph-image",
+          url: ogImagePath,
           width: 1200,
           height: 630,
-          alt: "AI Founder Radar — Global Micro-SaaS, AI & Indie Hacker Signal Radar",
+          alt: title,
         },
       ],
     },
@@ -81,7 +84,7 @@ export function buildRadarMetadata({
       card: "summary_large_image",
       title,
       description,
-      images: ["/opengraph-image"],
+      images: [ogImagePath],
     },
     robots: {
       index: true,
@@ -192,6 +195,7 @@ export function buildHubMetadata({
 }: BuildHubSeoParams): Metadata {
   const siteUrl = getSiteUrl();
   const canonicalPath = `/${locale}/${kind}/${slug}`;
+  const ogImagePath = `/og/${locale}/${kind}/${slug}`;
 
   const richDescription = formatLocalizedHubDescription(
     locale,
@@ -226,7 +230,7 @@ export function buildHubMetadata({
       type: "website",
       images: [
         {
-          url: "/opengraph-image",
+          url: ogImagePath,
           width: 1200,
           height: 630,
           alt: seoTitle,
@@ -237,7 +241,7 @@ export function buildHubMetadata({
       card: "summary_large_image",
       title: seoTitle,
       description: richDescription,
-      images: ["/opengraph-image"],
+      images: [ogImagePath],
     },
     robots: {
       index: items.length > 0,

@@ -4,7 +4,10 @@ export type RadarEventName =
   | "signal_bookmark"
   | "topic_hub_click"
   | "toolbox_click"
-  | "newsletter_submit";
+  | "newsletter_submit"
+  | "search_query"
+  | "saved_export"
+  | "saved_import";
 
 export type RadarEventProps = Record<
   string,

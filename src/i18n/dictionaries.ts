@@ -53,6 +53,17 @@ export interface Dictionary {
     emptySaved: string;
     emptyFiltered: string;
     resetAll: string;
+    searchingArchive: string;
+    archiveMatchesHeading: (count: number) => string;
+    archiveMatchesSubnote: string;
+  };
+  savedToolbar: {
+    title: (count: number) => string;
+    exportMarkdown: string;
+    exportJson: string;
+    importJson: string;
+    importSuccess: (added: number, totalValid: number) => string;
+    importError: string;
   };
   card: {
     categories: Record<SignalCategory, string>;
@@ -181,6 +192,24 @@ const EN_DICT: Dictionary = {
       "No saved signals yet. Click 'Save' on any card to bookmark product ideas.",
     emptyFiltered: "No signal cards match your active filter combination.",
     resetAll: "Reset all filters",
+    searchingArchive: "Searching full historical archive...",
+    archiveMatchesHeading: (count) =>
+      `📚 Historical Archive Matches (${count})`,
+    archiveMatchesSubnote:
+      "Matched across earlier daily issues — click any date pill to jump to that issue",
+  },
+  savedToolbar: {
+    title: (count) =>
+      `${count} Saved Signal${count === 1 ? "" : "s"} · Local Vault`,
+    exportMarkdown: "Export Markdown",
+    exportJson: "Export JSON Backup",
+    importJson: "Import Backup",
+    importSuccess: (added, totalValid) =>
+      added > 0
+        ? `✓ Restored ${added} new signal${added === 1 ? "" : "s"} (${totalValid} valid in backup).`
+        : `✓ Backup verified (${totalValid} signals already in your vault).`,
+    importError:
+      "Import failed: invalid JSON format, unsafe URL, or file exceeds 2MB.",
   },
   card: {
     categories: {
@@ -354,6 +383,22 @@ const ZH_DICT: Dictionary = {
       "你还没有收藏任何商机卡片，看到有启发的点子可点右下角「收藏」沉淀灵感。",
     emptyFiltered: "没有找到匹配当前交叉筛选条件的信号卡片。",
     resetAll: "重置全部筛选条件",
+    searchingArchive: "正在跨期检索全量历史归档...",
+    archiveMatchesHeading: (count) => `📚 跨期历史归档匹配（${count} 条）`,
+    archiveMatchesSubnote:
+      "以下卡片命中自往期历史库，点击卡片顶部日期胶囊即可直达对应归档期",
+  },
+  savedToolbar: {
+    title: (count) => `本地灵感收藏夹（${count} 条）`,
+    exportMarkdown: "导出 Markdown",
+    exportJson: "导出 JSON 备份",
+    importJson: "导入备份恢复",
+    importSuccess: (added, totalValid) =>
+      added > 0
+        ? `✓ 导入成功：新增恢复 ${added} 条收藏（备份共 ${totalValid} 条有效记录）。`
+        : `✓ 校验完成：备份中的 ${totalValid} 条记录均已在收藏夹中。`,
+    importError:
+      "导入失败：JSON 格式无效、包含不安全链接或文件超过 2MB 上限。",
   },
   card: {
     categories: {
@@ -526,6 +571,22 @@ const ZH_TW_DICT: Dictionary = {
       "你還沒有收藏任何商機卡片，看到有啟發的點子可點擊右下角「收藏」累積靈感。",
     emptyFiltered: "找不到符合目前交叉篩選條件的信號卡片。",
     resetAll: "重設所有篩選條件",
+    searchingArchive: "正在跨期檢索全量歷史歸檔...",
+    archiveMatchesHeading: (count) => `📚 跨期歷史歸檔匹配（${count} 則）`,
+    archiveMatchesSubnote:
+      "以下卡片命中自往期歷史庫，點擊卡片頂部日期膠囊即可直達對應歸檔期",
+  },
+  savedToolbar: {
+    title: (count) => `本機靈感收藏夾（${count} 則）`,
+    exportMarkdown: "匯出 Markdown",
+    exportJson: "匯出 JSON 備份",
+    importJson: "匯入備份還原",
+    importSuccess: (added, totalValid) =>
+      added > 0
+        ? `✓ 匯入成功：新增還原 ${added} 則收藏（備份共 ${totalValid} 則有效紀錄）。`
+        : `✓ 驗證完成：備份中的 ${totalValid} 則紀錄皆已在收藏夾中。`,
+    importError:
+      "匯入失敗：JSON 格式無效、包含不安全連結或檔案超過 2MB 上限。",
   },
   card: {
     categories: {
@@ -698,6 +759,22 @@ const JA_DICT: Dictionary = {
       "まだ保存されたカードはありません。気になったアイデアの右下「保存」からブックマークできます。",
     emptyFiltered: "現在の絞り込み条件に一致するシグナルカードが見つかりません。",
     resetAll: "すべての条件をリセット",
+    searchingArchive: "全期間の過去アーカイブを横断検索中...",
+    archiveMatchesHeading: (count) => `📚 過去アーカイブ横断一致（${count} 件）`,
+    archiveMatchesSubnote:
+      "過去号から一致したカードです。日付ピルをクリックすると該当号へ移動できます",
+  },
+  savedToolbar: {
+    title: (count) => `ローカル保存ボックス（${count} 件）`,
+    exportMarkdown: "Markdown 出力",
+    exportJson: "JSON バックアップ",
+    importJson: "バックアップ復元",
+    importSuccess: (added, totalValid) =>
+      added > 0
+        ? `✓ インポート完了：新たに ${added} 件を復元しました（有効データ ${totalValid} 件）。`
+        : `✓ 確認完了：バックアップ内の ${totalValid} 件はすべて保存済みです。`,
+    importError:
+      "インポート失敗：JSON形式が不正、安全でないURL、または2MB上限を超えています。",
   },
   card: {
     categories: {

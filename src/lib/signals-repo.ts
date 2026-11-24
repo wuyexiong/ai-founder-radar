@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import localDatasetRaw from "@/data/local-signals.json";
@@ -15,6 +15,7 @@ import { SIGNALS_CORPUS_CACHE_TAG } from "@/lib/revalidate";
 import {
   getSourceCopy,
   getTopicCopy,
+  isValidSourcePlatform,
   matchCanonicalTopics,
   SOURCE_PLATFORMS,
   TOPIC_SLUGS,
@@ -944,3 +945,229 @@ export const getSourceHubPayload = cache(
     });
   }
 );
+
+const VALID_SIGNAL_CATEGORIES: readonly SignalCategory[] = [
+  "launch",
+  "revenue",
+  "pain_point",
+  "ai_trend",
+] as const;
+
+export function isValidSignalCategory(
+  value: string | undefined | null
+): value is SignalCategory {
+  if (!value) return false;
+  return (VALID_SIGNAL_CATEGORIES as readonly string[]).includes(value);
+}
+
+export const SEARCH_QUERY_MAX_LENGTH = 64;
+export const SEARCH_DEFAULT_LIMIT = 24;
+export const SEARCH_MAX_LIMIT = 30;
+
+/**
+ * 转义 PostgreSQL LIKE / ILIKE 通配符（`\`、`%`、`_`），防止全表慢查询或通配符注入
+ */
+export function escapeIlikePattern(raw: string): string {
+  return raw.replace(/[\\%_]/g, "\\$&");
+}
+
+function matchesRawRecordSearch(
+  rec: RawSignalRecord,
+  qLower: string,
+  locale: Locale,
+  category?: SignalCategory,
+  platform?: SourcePlatform
+): boolean {
+  if (category && rec.category !== category) return false;
+  if (platform && rec.sourcePlatform !== platform) return false;
+
+  const chunks: string[] = [
+    rec.titleZh,
+    rec.titleOrig,
+    rec.whatItIs,
+    rec.businessSignal,
+    rec.indieTakeaway,
+    rec.metricsBadge,
+    rec.sourceSublabel,
+    ...(rec.tags ?? []),
+  ];
+
+  const translations = rec.translations ?? {};
+  for (const block of Object.values(translations)) {
+    if (!block) continue;
+    chunks.push(
+      block.title,
+      block.whatItIs,
+      block.businessSignal,
+      block.indieTakeaway,
+      block.metricsBadge ?? "",
+      ...(block.tags ?? [])
+    );
+  }
+
+  if (locale === "zh-TW" && !translations["zh-TW"]) {
+    chunks.push(
+      toTraditionalTw(
+        `${rec.titleZh} ${rec.whatItIs} ${rec.businessSignal} ${rec.indieTakeaway} ${(rec.tags ?? []).join(" ")}`
+      )
+    );
+  }
+
+  return chunks.join(" ").toLowerCase().includes(qLower);
+}
+
+function sortRawRecordsForSearch(records: RawSignalRecord[]): RawSignalRecord[] {
+  return [...records].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.dateKey.localeCompare(a.dateKey);
+  });
+}
+
+export interface SearchSignalsParams {
+  query: string;
+  locale: Locale;
+  category?: SignalCategory;
+  platform?: SourcePlatform;
+  limit?: number;
+}
+
+export interface SearchSignalsResult {
+  storageMode: "supabase" | "local-fallback";
+  items: SignalItem[];
+}
+
+export async function searchSignalsCorpus(
+  params: SearchSignalsParams
+): Promise<SearchSignalsResult> {
+  const normalizedQuery = params.query.trim().slice(0, SEARCH_QUERY_MAX_LENGTH);
+  const rawLimit =
+    typeof params.limit === "number" && Number.isFinite(params.limit)
+      ? Math.floor(params.limit)
+      : SEARCH_DEFAULT_LIMIT;
+  const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, rawLimit));
+  const category = isValidSignalCategory(params.category)
+    ? params.category
+    : undefined;
+  const platform = isValidSourcePlatform(params.platform)
+    ? params.platform
+    : undefined;
+
+  if (normalizedQuery.length < 2) {
+    return {
+      storageMode: hasDatabaseConfigured() ? "supabase" : "local-fallback",
+      items: [],
+    };
+  }
+
+  const qLower = normalizedQuery.toLowerCase();
+  const corpus = await getRecentRawSignals();
+
+  if (corpus.storageMode === "supabase") {
+    const matchedById = new Map<string, RawSignalRecord>();
+    for (const rec of corpus.records) {
+      if (matchesRawRecordSearch(rec, qLower, params.locale, category, platform)) {
+        matchedById.set(rec.id, rec);
+      }
+    }
+
+    // 当暖缓存已达 360 条上限且当前命中不足 limit 时，使用转义后的 Drizzle ILIKE 补齐更早历史记录
+    if (
+      corpus.records.length >= RECENT_CORPUS_CACHE_LIMIT &&
+      matchedById.size < limit
+    ) {
+      const db = getDb();
+      if (db && hasDatabaseConfigured()) {
+        try {
+          const escaped = escapeIlikePattern(normalizedQuery);
+          const likePattern = `%${escaped}%`;
+          const textClause = or(
+            ilike(signalItems.titleZh, likePattern),
+            ilike(signalItems.titleOrig, likePattern),
+            ilike(signalItems.whatItIs, likePattern),
+            ilike(signalItems.businessSignal, likePattern),
+            ilike(signalItems.indieTakeaway, likePattern),
+            ilike(signalItems.metricsBadge, likePattern),
+            sql`${signalItems.tags}::text ilike ${likePattern} escape '\\'`,
+            sql`${signalItems.translations}::text ilike ${likePattern} escape '\\'`
+          );
+
+          const filters = [textClause];
+          if (category) {
+            filters.push(eq(signalItems.category, category));
+          }
+          if (platform) {
+            filters.push(eq(signalItems.sourcePlatform, platform));
+          }
+
+          const sqlRows = await db
+            .select()
+            .from(signalItems)
+            .where(and(...filters))
+            .orderBy(desc(signalItems.score), desc(signalItems.dateKey))
+            .limit(Math.max(limit * 2, 40));
+
+          for (const row of sqlRows) {
+            if (!matchedById.has(row.id)) {
+              matchedById.set(row.id, mapDbRowToRawRecord(row));
+            }
+          }
+        } catch (error) {
+          const safeMsg =
+            error instanceof Error
+              ? error.message.replace(
+                  /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
+                  "$1***@"
+                )
+              : "Database search error";
+          console.warn(
+            "[AI Founder Radar] Historical SQL search fallback warning:",
+            safeMsg
+          );
+          if (matchedById.size === 0) {
+            const localFallbackMatches = sortRawRecordsForSearch(
+              getLocalRawRecords().filter((rec) =>
+                matchesRawRecordSearch(
+                  rec,
+                  qLower,
+                  params.locale,
+                  category,
+                  platform
+                )
+              )
+            ).slice(0, limit);
+            return {
+              storageMode: "local-fallback",
+              items: localFallbackMatches.map((rec) =>
+                resolveLocalizedSignal(rec, params.locale)
+              ),
+            };
+          }
+        }
+      }
+    }
+
+    const sorted = sortRawRecordsForSearch(
+      Array.from(matchedById.values())
+    ).slice(0, limit);
+
+    return {
+      storageMode: "supabase",
+      items: sorted.map((rec) => resolveLocalizedSignal(rec, params.locale)),
+    };
+  }
+
+  // 无 DB 或 DB 读取降级时：检索内置 local-signals.json 全量跨日记录
+  const localRecords = getLocalRawRecords();
+  const matchedLocal = sortRawRecordsForSearch(
+    localRecords.filter((rec) =>
+      matchesRawRecordSearch(rec, qLower, params.locale, category, platform)
+    )
+  ).slice(0, limit);
+
+  return {
+    storageMode: "local-fallback",
+    items: matchedLocal.map((rec) =>
+      resolveLocalizedSignal(rec, params.locale)
+    ),
+  };
+}

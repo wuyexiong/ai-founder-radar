@@ -11,10 +11,13 @@ import {
   ChevronUp,
   Clock,
   Compass,
+  Download,
   ExternalLink,
+  FileText,
   Flame,
   Globe,
   Layers,
+  Loader2,
   Mail,
   Monitor,
   Moon,
@@ -26,6 +29,7 @@ import {
   Target,
   Terminal,
   TrendingUp,
+  Upload,
   Wrench,
   X,
 } from "lucide-react";
@@ -39,6 +43,13 @@ import {
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { trackRadarEvent } from "@/lib/analytics";
+import {
+  formatSavedSignalsMarkdown,
+  MAX_SAVED_BACKUP_BYTES,
+  parseAndMergeSavedSignalsBackup,
+  sanitizeSavedSignalItem,
+  serializeSavedSignalsBackup,
+} from "@/lib/saved-portability";
 import { getTopicCopy } from "@/lib/seo-taxonomy";
 import type { RadarPagePayload } from "@/lib/signals-repo";
 import {
@@ -77,16 +88,20 @@ const COLLAPSED_TAG_LIMIT = 10;
 const SAVED_ITEMS_STORAGE_KEY = "afr-saved-items";
 const LEGACY_BOOKMARKS_STORAGE_KEY = "indieradar-bookmarks";
 
-function isValidSavedSnapshot(value: unknown): value is SignalItem {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.id === "string" &&
-    typeof obj.title === "string" &&
-    typeof obj.dateKey === "string" &&
-    typeof obj.sourceUrl === "string" &&
-    typeof obj.score === "number"
-  );
+function triggerBrowserDownload(
+  filename: string,
+  content: string,
+  mimeType: string
+) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function persistLocaleCookie(nextLocale: Locale) {
@@ -169,15 +184,27 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [archiveSearchResults, setArchiveSearchResults] = useState<
+    SignalItem[]
+  >([]);
+  const [completedSearchKey, setCompletedSearchKey] = useState("");
   const [savedSnapshots, setSavedSnapshots] = useState<
     Record<string, SignalItem>
   >({});
+  const [savedFeedback, setSavedFeedback] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>("system");
   const [themeHydrated, setThemeHydrated] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const langPickerRef = useRef<HTMLDivElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const routeKey = hub
     ? `${locale}:${hub.kind}:${hub.slug}`
     : `${locale}:${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
@@ -295,8 +322,9 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         for (const [id, snap] of Object.entries(
           rawSnapshots as Record<string, unknown>
         )) {
-          if (isValidSavedSnapshot(snap)) {
-            nextMap[id] = snap;
+          const valid = sanitizeSavedSignalItem(snap);
+          if (valid && id === valid.id) {
+            nextMap[valid.id] = valid;
           }
         }
       }
@@ -335,6 +363,9 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
     return () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      if (savedFeedbackTimerRef.current) {
+        clearTimeout(savedFeedbackTimerRef.current);
+      }
     };
   }, [items]);
 
@@ -409,6 +440,100 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         return b.score - a.score;
       });
   }, [items, savedSnapshots]);
+
+  const showSavedNotice = (tone: "success" | "error", message: string) => {
+    setSavedFeedback({ tone, message });
+    if (savedFeedbackTimerRef.current) {
+      clearTimeout(savedFeedbackTimerRef.current);
+    }
+    savedFeedbackTimerRef.current = setTimeout(() => {
+      setSavedFeedback(null);
+    }, 5000);
+  };
+
+  const handleExportSavedMarkdown = () => {
+    if (savedItems.length === 0) return;
+    const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    const origin =
+      configuredOrigin ||
+      (typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "https://radar.aibuildon.com");
+    const markdown = formatSavedSignalsMarkdown(savedItems, locale, origin);
+    triggerBrowserDownload(
+      `ai-founder-radar-saved-${activeDate}.md`,
+      markdown,
+      "text/markdown;charset=utf-8"
+    );
+    trackRadarEvent("saved_export", {
+      format: "markdown",
+      count: savedItems.length,
+      locale,
+    });
+  };
+
+  const handleExportSavedJson = () => {
+    if (savedItems.length === 0) return;
+    const exportMap: Record<string, SignalItem> = {};
+    for (const item of savedItems) {
+      exportMap[item.id] = item;
+    }
+    const jsonText = serializeSavedSignalsBackup(exportMap);
+    triggerBrowserDownload(
+      `ai-founder-radar-backup-${activeDate}.json`,
+      jsonText,
+      "application/json;charset=utf-8"
+    );
+    trackRadarEvent("saved_export", {
+      format: "json",
+      count: savedItems.length,
+      locale,
+    });
+  };
+
+  const handleImportBackupChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (file.size > MAX_SAVED_BACKUP_BYTES) {
+        throw new Error("BACKUP_TOO_LARGE");
+      }
+      const rawText = await file.text();
+      const { merged, addedCount, validCount } =
+        parseAndMergeSavedSignalsBackup(rawText, savedSnapshots);
+      setSavedSnapshots(merged);
+      try {
+        localStorage.setItem(SAVED_ITEMS_STORAGE_KEY, JSON.stringify(merged));
+        localStorage.setItem(
+          LEGACY_BOOKMARKS_STORAGE_KEY,
+          JSON.stringify(Object.keys(merged))
+        );
+      } catch {
+        // ignore storage quota errors
+      }
+      showSavedNotice(
+        "success",
+        dict.savedToolbar.importSuccess(addedCount, validCount)
+      );
+      trackRadarEvent("saved_import", {
+        result: "success",
+        added_count: addedCount,
+        valid_count: validCount,
+        locale,
+      });
+    } catch {
+      showSavedNotice("error", dict.savedToolbar.importError);
+      trackRadarEvent("saved_import", {
+        result: "error",
+        locale,
+      });
+    } finally {
+      e.target.value = "";
+    }
+  };
 
   // 日期前后切换与按月分组归档计算（availableDates 按最新在前排列）
   const currentDateIdx = availableDates.indexOf(activeDate);
@@ -567,6 +692,102 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       return haystack.includes(q);
     });
   }, [platformScopedItems, activeTag, searchQuery]);
+
+  // 双层搜索第二层：当关键词 >= 2 字符时，260ms 防抖 + AbortController 跨期检索全库历史记录
+  const trimmedSearch = searchQuery.trim().slice(0, 64);
+  const activeSearchCategory: SignalCategory | undefined =
+    activeTab === "revenue" ||
+    activeTab === "launch" ||
+    activeTab === "pain_point" ||
+    activeTab === "ai_trend"
+      ? activeTab
+      : undefined;
+  const activeSearchPlatform: SourcePlatform | undefined =
+    activePlatform ??
+    (hub?.kind === "source" ? (hub.slug as SourcePlatform) : undefined);
+
+  const searchRequestKey =
+    trimmedSearch.length >= 2
+      ? `${locale}|${activeSearchCategory ?? ""}|${activeSearchPlatform ?? ""}|${trimmedSearch.toLowerCase()}`
+      : "";
+  const isCrossSearchPending =
+    Boolean(searchRequestKey) && completedSearchKey !== searchRequestKey;
+
+  useEffect(() => {
+    if (!searchRequestKey) {
+      setArchiveSearchResults([]);
+      setCompletedSearchKey("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          q: trimmedSearch,
+          locale,
+          limit: "24",
+        });
+        if (activeSearchCategory) {
+          params.set("category", activeSearchCategory);
+        }
+        if (activeSearchPlatform) {
+          params.set("platform", activeSearchPlatform);
+        }
+
+        const res = await fetch(`/api/signals/search?${params.toString()}`, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+
+        const data = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          items?: SignalItem[];
+        } | null;
+        if (controller.signal.aborted) return;
+
+        const nextItems = Array.isArray(data?.items) ? data.items : [];
+        setArchiveSearchResults(nextItems);
+        setCompletedSearchKey(searchRequestKey);
+        trackRadarEvent("search_query", {
+          query_length: trimmedSearch.length,
+          archive_hits: nextItems.length,
+          category: activeSearchCategory ?? "all",
+          platform: activeSearchPlatform ?? "all",
+          locale,
+        });
+      } catch {
+        if (controller.signal.aborted) return;
+        setArchiveSearchResults([]);
+        setCompletedSearchKey(searchRequestKey);
+      }
+    }, 260);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    searchRequestKey,
+    trimmedSearch,
+    locale,
+    activeSearchCategory,
+    activeSearchPlatform,
+  ]);
+
+  const crossArchiveMatches = useMemo(() => {
+    if (!searchRequestKey || completedSearchKey !== searchRequestKey) {
+      return [];
+    }
+    const visibleIds = new Set(filteredItems.map((it) => it.id));
+    return archiveSearchResults.filter((it) => !visibleIds.has(it.id));
+  }, [
+    searchRequestKey,
+    completedSearchKey,
+    archiveSearchResults,
+    filteredItems,
+  ]);
 
   const topThreeItems = useMemo(() => {
     return [...items].sort((a, b) => b.score - a.score).slice(0, 3);
@@ -1357,6 +1578,71 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               </div>
             )}
 
+            {/* 收藏夹便携导出与备份恢复工具栏（activeTab === "saved" 时常驻展示，支持 0 收藏空状态一键恢复备份） */}
+            {activeTab === "saved" && (
+              <div className="mb-4 rounded-xl border border-amber-200/80 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-950/15">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 tabular-nums dark:text-slate-200">
+                    <Bookmark className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    {dict.savedToolbar.title(savedItems.length)}
+                  </span>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      ref={backupFileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={handleImportBackupChange}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      disabled={savedItems.length === 0}
+                      onClick={handleExportSavedMarkdown}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>{dict.savedToolbar.exportMarkdown}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={savedItems.length === 0}
+                      onClick={handleExportSavedJson}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>{dict.savedToolbar.exportJson}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => backupFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-slate-800 cursor-pointer dark:border-blue-500 dark:bg-blue-600 dark:hover:bg-blue-500"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{dict.savedToolbar.importJson}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {savedFeedback && (
+                  <p
+                    role="status"
+                    className={cn(
+                      "mt-2 rounded-lg px-2.5 py-1.5 text-xs font-medium",
+                      savedFeedback.tone === "success"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                        : "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+                    )}
+                  >
+                    {savedFeedback.message}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* 信号卡片列表（移动端在第 4 张卡片后内嵌早报订阅卡，消除长滚到底部断层） */}
             {filteredItems.length > 0 ? (
               <div
@@ -1404,7 +1690,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   );
                 })}
               </div>
-            ) : (
+            ) : isCrossSearchPending ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white p-10 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-[#111827] dark:text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                <span>{dict.filters.searchingArchive}</span>
+              </div>
+            ) : crossArchiveMatches.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#111827]">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                   {activeTab === "saved"
@@ -1435,6 +1726,54 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   </button>
                 )}
               </div>
+            ) : null}
+
+            {/* 跨期历史归档匹配分区（自动剔除当前页已展示的同 ID 卡片，点击日期胶囊直达对应期） */}
+            {filteredItems.length > 0 && isCrossSearchPending && (
+              <div className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white/80 py-3.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-[#111827]/70 dark:text-slate-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                <span>{dict.filters.searchingArchive}</span>
+              </div>
+            )}
+
+            {crossArchiveMatches.length > 0 && (
+              <section
+                aria-label={dict.filters.archiveMatchesHeading(
+                  crossArchiveMatches.length
+                )}
+                className={cn(
+                  "space-y-3.5",
+                  filteredItems.length > 0 &&
+                    "mt-6 border-t border-slate-200/90 pt-5 dark:border-slate-800/90"
+                )}
+              >
+                <div className="rounded-xl border border-blue-200/80 bg-blue-50/55 px-4 py-2.5 dark:border-blue-500/25 dark:bg-blue-950/25">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">
+                    {dict.filters.archiveMatchesHeading(
+                      crossArchiveMatches.length
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[11.5px] text-slate-500 dark:text-slate-400">
+                    {dict.filters.archiveMatchesSubnote}
+                  </p>
+                </div>
+
+                <div className="space-y-3.5">
+                  {crossArchiveMatches.map((item) => (
+                    <SignalCard
+                      key={`archive-${item.id}`}
+                      item={item}
+                      locale={locale}
+                      dict={dict.card}
+                      isBookmarked={Boolean(savedSnapshots[item.id])}
+                      isHighlighted={highlightedId === item.id}
+                      activeTopicSlug={hub?.kind === "topic" ? hub.slug : null}
+                      hubDateHref={`${buildLocalePath(locale, item.dateKey, latestDate)}#${encodeURIComponent(item.id)}`}
+                      onToggleBookmark={toggleBookmark}
+                    />
+                  ))}
+                </div>
+              </section>
             )}
           </div>
 
