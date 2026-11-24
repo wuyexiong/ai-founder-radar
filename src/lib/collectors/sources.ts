@@ -2,6 +2,12 @@ import { isIP } from "node:net";
 import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
 import type { SourcePlatform } from "@/types/signal";
 
+export interface GitHubStats {
+  totalStars: number;
+  starsDelta: number;
+  deltaKind: "today" | "per_day";
+}
+
 export interface RawFetchedItem {
   title: string;
   summary: string;
@@ -10,6 +16,7 @@ export interface RawFetchedItem {
   sourceSublabel: string;
   rawMetric: string;
   publishedAt: string;
+  githubStats?: GitHubStats;
 }
 
 const USER_AGENT =

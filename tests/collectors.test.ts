@@ -7,6 +7,7 @@ import {
   fetchAppStoreTopGrossing,
   fetchGitHubTrending,
   fetchTrustMrr,
+  setExtraSourcesTimingForTests,
 } from "../src/lib/collectors/extra-sources";
 import {
   fetchViaJinaMarkdown,
@@ -43,10 +44,15 @@ describe("Collectors & Jina Throttling Pool", () => {
       anonSpacingMs: 0,
       authSpacingMs: 0,
     });
+    setExtraSourcesTimingForTests({
+      ghTrendingMinDelayMs: 0,
+      ghTrendingMaxDelayMs: 0,
+    });
   });
 
   afterEach(() => {
     setJinaTimingForTests(null);
+    setExtraSourcesTimingForTests(null);
     resetOfflineTestGuard();
   });
 
@@ -604,13 +610,43 @@ describe("Collectors & Jina Throttling Pool", () => {
   });
 
   describe("7. GitHub Trending & 7-Day Breakout", () => {
-    it("parses Daily Trending HTML, filters noise, applies permissive OSS license bonus on 7d breakout, and keeps dual pools conflict-free", async () => {
+    it("scans 5 language Daily Trending pages, deduplicates & merges valid starsToday/totalStars, and populates githubStats across both pools", async () => {
       const trendingHtml = readFixture("github-trending.html");
       const breakoutJson = readFixture("github-breakout.json");
+      const rustTrendingHtml = `
+        <div class="Box">
+          <article class="Box-row">
+            <h2 class="h3 lh-condensed"><a href="/acme/agent-browser">acme / agent-browser</a></h2>
+            <p class="col-9">Headless browser automation workflow SDK</p>
+            <div>
+              <span itemprop="programmingLanguage">TypeScript</span>
+              <a href="/acme/agent-browser/stargazers">4,310</a>
+              <span>0 stars today</span>
+            </div>
+          </article>
+          <article class="Box-row">
+            <h2 class="h3 lh-condensed"><a href="/rust-ai/mcp-runtime">rust-ai / mcp-runtime</a></h2>
+            <p class="col-9">Zero-overhead Rust MCP server gateway &amp; sandbox runtime</p>
+            <div>
+              <span itemprop="programmingLanguage">Rust</span>
+              <a href="/rust-ai/mcp-runtime/stargazers">1,850</a>
+              <span>420 stars today</span>
+            </div>
+          </article>
+        </div>
+      `;
 
+      const requestedTrendingUrls: string[] = [];
       const mock = installFetchMock((url) => {
-        if (url === "https://github.com/trending?since=daily") {
-          return textResponse(trendingHtml, 200, "text/html");
+        if (url.startsWith("https://github.com/trending")) {
+          requestedTrendingUrls.push(url);
+          if (url === "https://github.com/trending?since=daily") {
+            return textResponse(trendingHtml, 200, "text/html");
+          }
+          if (url === "https://github.com/trending/rust?since=daily") {
+            return textResponse(rustTrendingHtml, 200, "text/html");
+          }
+          return textResponse("<div class='Box'></div>", 200, "text/html");
         }
         if (url.startsWith("https://api.github.com/search/repositories")) {
           return textResponse(breakoutJson, 200, "application/json");
@@ -622,22 +658,50 @@ describe("Collectors & Jina Throttling Pool", () => {
         const excluded = new Set(["https://github.com/seen/already-in-db"]);
         const items = await fetchGitHubTrending(10, 4, excluded);
 
-        assert.equal(items.length, 3);
-        // Pool A: Daily Trending
+        assert.deepEqual(requestedTrendingUrls, [
+          "https://github.com/trending?since=daily",
+          "https://github.com/trending/typescript?since=daily",
+          "https://github.com/trending/python?since=daily",
+          "https://github.com/trending/rust?since=daily",
+          "https://github.com/trending/go?since=daily",
+        ]);
+
+        assert.equal(items.length, 4);
+        // Pool A #1: acme/agent-browser deduplicated across "" (615 today, 4280 total) & "rust" (0 today, 4310 total) -> retains 615 today & 4310 total!
         assert.equal(items[0].url, "https://github.com/acme/agent-browser");
         assert.equal(items[0].sourceSublabel, "GitHub Trending");
         assert.equal(items[0].rawMetric, "★ 4.3k (+615 今日)");
+        assert.deepEqual(items[0].githubStats, {
+          totalStars: 4310,
+          starsDelta: 615,
+          deltaKind: "today",
+        });
 
-        // Pool B: 7d Breakout — MIT + demo homepage (300 stars) outranks GPL-3.0 (330 stars)!
+        // Pool A #2: rust-ai/mcp-runtime from Rust daily trending
+        assert.equal(items[1].url, "https://github.com/rust-ai/mcp-runtime");
+        assert.equal(items[1].sourceSublabel, "GitHub Trending");
+        assert.equal(items[1].rawMetric, "★ 1.9k (+420 今日)");
+        assert.deepEqual(items[1].githubStats, {
+          totalStars: 1850,
+          starsDelta: 420,
+          deltaKind: "today",
+        });
+
+        // Pool B: 7d Breakout — MIT + demo homepage (300 stars) outranks GPL-3.0 (330 stars) and carries per_day githubStats!
         assert.equal(
-          items[1].url,
+          items[2].url,
           "https://github.com/indie/mcp-billing-gateway"
         );
-        assert.equal(items[1].sourceSublabel, "GitHub 7日新锐");
-        assert.equal(items[1].rawMetric, "★ 300 · MIT");
+        assert.equal(items[2].sourceSublabel, "GitHub 7日新锐");
+        assert.equal(items[2].githubStats?.totalStars, 300);
+        assert.equal(items[2].githubStats?.deltaKind, "per_day");
+        assert.ok((items[2].githubStats?.starsDelta ?? 0) >= 1);
+        assert.match(items[2].rawMetric, /^★ 300 \(\+\d+\/日\)$/);
 
-        assert.equal(items[2].url, "https://github.com/indie/pdf-ocr-gpl");
-        assert.equal(items[2].rawMetric, "★ 330 · 7日新锐");
+        assert.equal(items[3].url, "https://github.com/indie/pdf-ocr-gpl");
+        assert.equal(items[3].githubStats?.totalStars, 330);
+        assert.equal(items[3].githubStats?.deltaKind, "per_day");
+        assert.match(items[3].rawMetric, /^★ 330 \(\+\d+\/日\)$/);
 
         // Noise repos (leetcode / minecraft cheat) and duplicate URL not duplicated
         assert.ok(

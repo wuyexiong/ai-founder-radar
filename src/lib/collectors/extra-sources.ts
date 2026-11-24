@@ -2,6 +2,7 @@ import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
 import {
   addScannedCountFromExternal,
   isSafePublicHttpUrl,
+  type GitHubStats,
   type RawFetchedItem,
 } from "@/lib/collectors/sources";
 
@@ -432,20 +433,66 @@ export async function fetchAppStoreTopGrossing(
 }
 
 // ============================================================================
-// 3. GitHub 双轨独立配额：Trending 每日飙升榜 (10 条) + 近 7 日新锐 AI 开源黑马 (4 条)
+// 3. GitHub 双轨独立配额：多语言 Trending 每日飙升榜 (10 条) + 近 7 日新锐 AI 开源黑马 (4 条)
 // ============================================================================
+const GH_TRENDING_LANGUAGES = ["", "typescript", "python", "rust", "go"] as const;
+
+let ghTrendingMinDelayMs = 800;
+let ghTrendingMaxDelayMs = 1200;
+
+export function setExtraSourcesTimingForTests(
+  overrides: {
+    ghTrendingMinDelayMs?: number;
+    ghTrendingMaxDelayMs?: number;
+  } | null
+): void {
+  ghTrendingMinDelayMs = overrides?.ghTrendingMinDelayMs ?? 800;
+  ghTrendingMaxDelayMs = overrides?.ghTrendingMaxDelayMs ?? 1200;
+}
+
+function sleepPoliteTrendingInterval(): Promise<void> {
+  const span = Math.max(0, ghTrendingMaxDelayMs - ghTrendingMinDelayMs);
+  const ms =
+    ghTrendingMinDelayMs +
+    (span > 0 ? Math.floor(Math.random() * (span + 1)) : 0);
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildGitHubTrendingUrl(lang: string): string {
+  return lang
+    ? `https://github.com/trending/${encodeURIComponent(lang)}?since=daily`
+    : "https://github.com/trending?since=daily";
+}
+
 const GH_NOISE_PATTERN =
   /\b(gta|recompilation|cheat|hack|crack|leak|pirate|awesome-|interview|leetcode|roadmap|tutorial|course|curriculum|book|textbook|wallpaper|dotfiles|font|emulator|minecraft|roblox|pokemon|free-api|reverse-engineer)\b/i;
 
 const GH_COMMERCIAL_AI_PATTERN =
   /\b(ai|agent|agents|llm|mcp|rag|voice|speech|tts|ocr|video|browser|scraper|crawl|workflow|automation|saas|crm|erp|billing|analytics|dashboard|editor|canvas|slides|pdf|markdown|email|seo|support|chat|copilot|sandbox|memory|eval|gateway|workspace|desktop|studio|sdk|platform|assistant)\b/i;
 
+interface TrendingCandidateEntry {
+  repoPath: string;
+  url: string;
+  description: string;
+  langLabel: string;
+  totalStars: number;
+  starsToday: number;
+}
+
 export async function fetchGitHubTrending(
   trendingLimit = 10,
   breakoutLimit = 4,
   excludeUrls?: Set<string>
 ): Promise<RawFetchedItem[]> {
-  const seenUrls = new Set<string>();
+  const excludedLower = new Set(
+    Array.from(excludeUrls ?? [], (u) => u.trim().toLowerCase())
+  );
+  const pickedLowerUrls = new Set<string>();
+  const allTrendingStatsByUrl = new Map<
+    string,
+    { totalStars: number; starsToday: number }
+  >();
   const trendingPicked: RawFetchedItem[] = [];
   const breakoutPicked: RawFetchedItem[] = [];
 
@@ -453,8 +500,31 @@ export async function fetchGitHubTrending(
     .toISOString()
     .slice(0, 10);
 
-  const [trendingRes, breakoutRes] = await Promise.allSettled([
-    fetchWithTimeout("https://github.com/trending?since=daily", {}, 12000),
+  const fetchAllDailyTrendingPages = async (): Promise<string[]> => {
+    const pages: string[] = [];
+    for (let idx = 0; idx < GH_TRENDING_LANGUAGES.length; idx++) {
+      if (idx > 0) {
+        await sleepPoliteTrendingInterval();
+      }
+      const lang = GH_TRENDING_LANGUAGES[idx];
+      try {
+        const res = await fetchWithTimeout(
+          buildGitHubTrendingUrl(lang),
+          {},
+          12000
+        );
+        if (res.ok) {
+          pages.push(await res.text());
+        }
+      } catch {
+        // 单个语言榜单超时或失败不影响其余语言池
+      }
+    }
+    return pages;
+  };
+
+  const [trendingPagesRes, breakoutRes] = await Promise.allSettled([
+    fetchAllDailyTrendingPages(),
     fetchWithTimeout(
       `https://api.github.com/search/repositories?q=created:>${sevenDaysAgo}+stars:>60&sort=stars&order=desc&per_page=40`,
       { headers: { Accept: "application/vnd.github+json" } },
@@ -462,66 +532,109 @@ export async function fetchGitHubTrending(
     ),
   ]);
 
-  // 3a. 独立配额池 A：GitHub Trending 每日飙升榜（放宽关键词白名单，仅过滤盗版/刷题/纯列表）
-  if (trendingRes.status === "fulfilled" && trendingRes.value.ok) {
-    const html = await trendingRes.value.text();
-    const articles =
-      html.match(/<article class="Box-row"[\s\S]*?<\/article>/g) ?? [];
-    addScannedCountFromExternal(articles.length);
+  // 3a. 独立配额池 A：多语言 GitHub Trending 每日飙升榜（按仓库 URL 去重并合并有效双指标）
+  if (trendingPagesRes.status === "fulfilled" && trendingPagesRes.value.length > 0) {
+    const candidateByLowerUrl = new Map<string, TrendingCandidateEntry>();
 
-    const trendingCandidates: Array<RawFetchedItem & { starsToday: number }> = [];
+    for (const html of trendingPagesRes.value) {
+      const articles =
+        html.match(/<article class="Box-row"[\s\S]*?<\/article>/g) ?? [];
+      addScannedCountFromExternal(articles.length);
 
-    for (const art of articles) {
-      const repoPath = art
-        .match(/<h2[^>]*>[\s\S]*?<a[^>]+href="\/([^"\/]+\/[^"\/]+)"/)?.[1]
-        ?.trim();
-      if (!repoPath) continue;
-      const repoUrl = `https://github.com/${repoPath}`;
-      if (!isSafeHttpsUrl(repoUrl) || excludeUrls?.has(repoUrl)) continue;
-      if (seenUrls.has(repoUrl)) continue;
+      for (const art of articles) {
+        const repoPath = art
+          .match(/<h2[^>]*>[\s\S]*?<a[^>]+href="\/([^"\/]+\/[^"\/]+)"/)?.[1]
+          ?.trim();
+        if (!repoPath) continue;
+        const repoUrl = `https://github.com/${repoPath}`;
+        if (!isSafeHttpsUrl(repoUrl)) continue;
+        const lowerUrl = repoUrl.toLowerCase();
 
-      const descRaw =
-        art.match(/<p[^>]*class="[^"]*col-9[^"]*"[^>]*>([\s\S]*?)<\/p>/)?.[1] ??
-        art.match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ??
-        "";
-      const description = cleanText(descRaw);
-      const lang =
-        cleanText(
-          art.match(
-            /itemprop="programmingLanguage"[^>]*>([\s\S]*?)<\/span>/
-          )?.[1] ?? ""
-        ) || "Open Source";
-      const starsTodayStr = art.match(/([\d,]+)\s+stars\s+today/i)?.[1] ?? "0";
-      const starsToday = Number(starsTodayStr.replace(/,/g, "")) || 0;
-      const totalStarsStr =
-        art.match(/href="\/[^"]+\/stargazers"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? "";
-      const totalStars =
-        Number(cleanText(totalStarsStr).replace(/,/g, "")) || starsToday;
+        const descRaw =
+          art.match(/<p[^>]*class="[^"]*col-9[^"]*"[^>]*>([\s\S]*?)<\/p>/)?.[1] ??
+          art.match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ??
+          "";
+        const description = cleanText(descRaw);
+        const lang =
+          cleanText(
+            art.match(
+              /itemprop="programmingLanguage"[^>]*>([\s\S]*?)<\/span>/
+            )?.[1] ?? ""
+          ) || "Open Source";
+        const starsTodayStr =
+          art.match(/([\d,]+)\s+stars\s+today/i)?.[1] ?? "0";
+        const starsToday = Number(starsTodayStr.replace(/,/g, "")) || 0;
+        const totalStarsStr =
+          art.match(/href="\/[^"]+\/stargazers"[^>]*>([\s\S]*?)<\/a>/)?.[1] ??
+          "";
+        const totalStars =
+          Number(cleanText(totalStarsStr).replace(/,/g, "")) || starsToday;
 
-      const blob = `${repoPath} ${description}`;
-      if (GH_NOISE_PATTERN.test(blob)) continue;
+        const prevStats = allTrendingStatsByUrl.get(lowerUrl);
+        allTrendingStatsByUrl.set(lowerUrl, {
+          totalStars: Math.max(prevStats?.totalStars ?? 0, totalStars),
+          starsToday: Math.max(prevStats?.starsToday ?? 0, starsToday),
+        });
 
-      seenUrls.add(repoUrl);
-      trendingCandidates.push({
-        title: description
-          ? `${repoPath} — ${description.slice(0, 95)}`
-          : repoPath,
-        summary: `GitHub Trending Daily (${lang}, ★ ${totalStars.toLocaleString()}, +${starsToday} stars today): ${
-          description || repoPath
-        }`,
-        url: repoUrl,
-        sourcePlatform: "github",
-        sourceSublabel: "GitHub Trending",
-        rawMetric: `★ ${formatCompactCount(totalStars)} (+${starsToday} 今日)`,
-        publishedAt: new Date().toISOString(),
-        starsToday,
-      });
+        if (excludedLower.has(lowerUrl)) continue;
+        const blob = `${repoPath} ${description}`;
+        if (GH_NOISE_PATTERN.test(blob)) continue;
+
+        const existing = candidateByLowerUrl.get(lowerUrl);
+        if (existing) {
+          existing.totalStars = Math.max(existing.totalStars, totalStars);
+          existing.starsToday = Math.max(existing.starsToday, starsToday);
+          if (!existing.description && description) {
+            existing.description = description;
+          }
+          if (
+            existing.langLabel === "Open Source" &&
+            lang !== "Open Source"
+          ) {
+            existing.langLabel = lang;
+          }
+          continue;
+        }
+
+        candidateByLowerUrl.set(lowerUrl, {
+          repoPath,
+          url: repoUrl,
+          description,
+          langLabel: lang,
+          totalStars,
+          starsToday,
+        });
+      }
     }
 
-    trendingCandidates
-      .sort((a, b) => b.starsToday - a.starsToday)
-      .slice(0, trendingLimit)
-      .forEach(({ starsToday: _s, ...item }) => trendingPicked.push(item));
+    const sortedTrending = Array.from(candidateByLowerUrl.values())
+      .sort(
+        (a, b) => b.starsToday - a.starsToday || b.totalStars - a.totalStars
+      )
+      .slice(0, trendingLimit);
+
+    for (const entry of sortedTrending) {
+      pickedLowerUrls.add(entry.url.toLowerCase());
+      const githubStats: GitHubStats = {
+        totalStars: entry.totalStars,
+        starsDelta: entry.starsToday,
+        deltaKind: "today",
+      };
+      trendingPicked.push({
+        title: entry.description
+          ? `${entry.repoPath} — ${entry.description.slice(0, 95)}`
+          : entry.repoPath,
+        summary: `GitHub Trending Daily (${entry.langLabel}, ★ ${entry.totalStars.toLocaleString("en-US")}, +${entry.starsToday.toLocaleString("en-US")} stars today): ${
+          entry.description || entry.repoPath
+        }`,
+        url: entry.url,
+        sourcePlatform: "github",
+        sourceSublabel: "GitHub Trending",
+        rawMetric: `★ ${formatCompactCount(entry.totalStars)} (+${formatDeltaCount(entry.starsToday)} 今日)`,
+        publishedAt: new Date().toISOString(),
+        githubStats,
+      });
+    }
   }
 
   // 3b. 独立配额池 B：近 7 天新诞生的高星爆发 AI / 工具仓库（专挖超早期可商业化黑马）
@@ -544,12 +657,19 @@ export async function fetchGitHubTrending(
     addScannedCountFromExternal(items.length);
 
     const breakoutCandidates: Array<RawFetchedItem & { rankScore: number }> = [];
+    const seenBreakoutLower = new Set<string>();
 
     for (const repo of items) {
       const repoUrl = repo.html_url;
-      if (!repoUrl || !isSafeHttpsUrl(repoUrl) || excludeUrls?.has(repoUrl))
+      if (!repoUrl || !isSafeHttpsUrl(repoUrl)) continue;
+      const lowerUrl = repoUrl.toLowerCase();
+      if (
+        excludedLower.has(lowerUrl) ||
+        pickedLowerUrls.has(lowerUrl) ||
+        seenBreakoutLower.has(lowerUrl)
+      ) {
         continue;
-      if (seenUrls.has(repoUrl)) continue;
+      }
 
       const desc = (repo.description ?? "").trim();
       if (desc.length < 20) continue;
@@ -571,7 +691,33 @@ export async function fetchGitHubTrending(
       const rankScore =
         stars * 0.85 + (isPermissive ? 35 : 0) + (hasDemoSite ? 20 : 0);
 
-      seenUrls.add(repoUrl);
+      const trendingMatch = allTrendingStatsByUrl.get(lowerUrl);
+      let githubStats: GitHubStats;
+      let rawMetric: string;
+
+      if (trendingMatch && trendingMatch.starsToday > 0) {
+        const mergedTotal = Math.max(stars, trendingMatch.totalStars);
+        githubStats = {
+          totalStars: mergedTotal,
+          starsDelta: trendingMatch.starsToday,
+          deltaKind: "today",
+        };
+        rawMetric = `★ ${formatCompactCount(mergedTotal)} (+${formatDeltaCount(trendingMatch.starsToday)} 今日)`;
+      } else {
+        const createdTs = repo.created_at ? Date.parse(repo.created_at) : NaN;
+        const ageDays = Number.isFinite(createdTs)
+          ? Math.max(1, (Date.now() - createdTs) / (86400 * 1000))
+          : 7;
+        const starsPerDay = Math.max(1, Math.round(stars / ageDays));
+        githubStats = {
+          totalStars: stars,
+          starsDelta: starsPerDay,
+          deltaKind: "per_day",
+        };
+        rawMetric = `★ ${formatCompactCount(stars)} (+${formatDeltaCount(starsPerDay)}/日)`;
+      }
+
+      seenBreakoutLower.add(lowerUrl);
       breakoutCandidates.push({
         title: `${repo.full_name} — ${desc.slice(0, 95)}`,
         summary: `7-Day Breakout Open-Source Repo (${
@@ -582,10 +728,9 @@ export async function fetchGitHubTrending(
         url: repoUrl,
         sourcePlatform: "github",
         sourceSublabel: "GitHub 7日新锐",
-        rawMetric: `★ ${formatCompactCount(stars)}${
-          isPermissive ? ` · ${licenseId}` : " · 7日新锐"
-        }`,
+        rawMetric,
         publishedAt: repo.created_at || new Date().toISOString(),
+        githubStats,
         rankScore,
       });
     }
@@ -600,6 +745,13 @@ export async function fetchGitHubTrending(
 }
 
 function formatCompactCount(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
+  const safe = Math.max(0, Math.round(n));
+  if (safe >= 1000) return `${(safe / 1000).toFixed(1)}k`;
+  return String(safe);
+}
+
+function formatDeltaCount(n: number): string {
+  const safe = Math.max(0, Math.round(n));
+  if (safe >= 10_000) return `${(safe / 1000).toFixed(1)}k`;
+  return safe.toLocaleString("en-US");
 }

@@ -462,7 +462,7 @@
       "whatItIs": "专门解决 AI Agent 读网页时被广告栏、导航菜单污染上下文的轻量开源清洗库，支持一键部署为 Cloudflare Worker 接口。",
       "businessSignal": "MIT 开源协议；同类托管 API 服务（如 Firecrawl / Jina Reader）在开发者市场需求极旺，既是极佳底层组件也可包装垂直行业采集 API。",
       "indieTakeaway": "可以直接拿来强化我们自己雷达站的正文深挖能力，或者针对特定垂直站（如房产、招聘、外贸黄页）封装专用数据清洗 API。",
-      "metricsBadge": "⭐ +1.4k 今日",
+      "metricsBadge": "★ 6.8k (+1,400 今日)",
       "metricType": "heat",
       "tags": [
         "#GitHub飙升",
@@ -481,7 +481,7 @@
           "whatItIs": "專門解決 AI Agent 讀網頁時被廣告欄、導航選單汙染上下文的輕量開源清洗庫，支援一鍵部署為 Cloudflare Worker 介面。",
           "businessSignal": "MIT 開源協議；同類託管 API 服務（如 Firecrawl / Jina Reader）在開發者市場需求極旺，既是極佳底層元件也可包裝垂直行業採集 API。",
           "indieTakeaway": "可以直接拿來強化我們自己雷達站的正文深挖能力，或者針對特定垂直站（如房產、招聘、外貿黃頁）封裝專用資料清洗 API。",
-          "metricsBadge": "⭐ +1.4k 今日",
+          "metricsBadge": "★ 6.8k (+1,400 今日)",
           "tags": [
             "#GitHub飆升",
             "#AI基建",
@@ -493,7 +493,7 @@
           "whatItIs": "Clean web parser for AI agents removing boilerplate, deploying instantly on Cloudflare Workers.",
           "businessSignal": "MIT license; high developer demand for data cleaning APIs like Firecrawl to power AI workflows.",
           "indieTakeaway": "Package this open-source core into niche vertical scrapers like real estate or job boards.",
-          "metricsBadge": "⭐ +1.4k Stars",
+          "metricsBadge": "★ 6.8k (+1,400 today)",
           "tags": [
             "#OpenSource",
             "#AIInfrastructure",
@@ -505,7 +505,7 @@
           "whatItIs": "AIエージェントのノイズを排除する、Cloudflare Worker対応のWeb抽出ライブラリ。",
           "businessSignal": "MITライセンス。類似APIの需要が急増中。垂直特化型スクレイピングAPIへの展開に最適。",
           "indieTakeaway": "不動産や求人など特定ニッチのデータ抽出APIとして再パッケージ化し、SaaS化を狙う。",
-          "metricsBadge": "⭐ 1.4k スタ",
+          "metricsBadge": "★ 6.8k (+1,400 本日)",
           "tags": [
             "#オープンソース",
             "#AI開発",

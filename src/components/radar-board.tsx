@@ -377,14 +377,24 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       setActivePlatform(null);
       return;
     }
-    const hasInCurrentTab = tabScopedItems.some((i) => i.sourcePlatform === p);
-    if (!hasInCurrentTab) {
+    const totalCount = items.filter((i) => i.sourcePlatform === p).length;
+    const tabCount = tabScopedItems.filter(
+      (i) => i.sourcePlatform === p
+    ).length;
+    const shouldSwitchToAll =
+      (activeTab === "top" && totalCount > tabCount) || tabCount === 0;
+
+    if (shouldSwitchToAll) {
       setActiveTab("all");
     }
     setActivePlatform(p);
+
+    const targetPool = shouldSwitchToAll ? items : tabScopedItems;
     if (
       activeTag &&
-      !items.some((i) => i.sourcePlatform === p && i.tags.includes(activeTag))
+      !targetPool.some(
+        (i) => i.sourcePlatform === p && i.tags.includes(activeTag)
+      )
     ) {
       setActiveTag(null);
     }
@@ -757,9 +767,15 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                         dotClass: "bg-slate-400",
                       };
                       const selected = activePlatform === platform;
-                      const displayCount =
-                        tabCount > 0 ? tabCount : totalCount;
-                      const dimmed = tabCount === 0 && !selected;
+                      const isUnscopedCategory =
+                        activeTab === "top" || activeTab === "all";
+                      const displayCount = isUnscopedCategory
+                        ? totalCount
+                        : tabCount > 0
+                          ? tabCount
+                          : totalCount;
+                      const dimmed =
+                        !isUnscopedCategory && tabCount === 0 && !selected;
 
                       return (
                         <button
@@ -767,7 +783,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                           type="button"
                           onClick={() => handleSelectPlatform(platform)}
                           title={
-                            tabCount === 0
+                            !isUnscopedCategory && tabCount === 0
                               ? dict.filters.crossTabHint(totalCount)
                               : dict.filters.filterPlatform(meta.label)
                           }

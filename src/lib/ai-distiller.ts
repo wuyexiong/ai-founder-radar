@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { RawFetchedItem } from "@/lib/collectors/sources";
+import type { GitHubStats, RawFetchedItem } from "@/lib/collectors/sources";
 import { deriveTraditionalFields, toTraditionalTw } from "@/lib/zh-convert";
 import type {
   LocalizedSignalFields,
@@ -413,6 +413,117 @@ function normalizeLocaleBlock(
   };
 }
 
+function parseCompactStarCount(str: string): number {
+  const cleaned = str.replace(/,/g, "").trim();
+  const m = cleaned.match(/^([\d.]+)\s*([kKmMbB])?$/);
+  if (!m) return NaN;
+  const base = Number(m[1]);
+  if (!Number.isFinite(base)) return NaN;
+  const unit = (m[2] ?? "").toLowerCase();
+  if (unit === "k") return Math.round(base * 1_000);
+  if (unit === "m") return Math.round(base * 1_000_000);
+  if (unit === "b") return Math.round(base * 1_000_000_000);
+  return Math.round(base);
+}
+
+function formatStarTotal(n: number): string {
+  const safe = Math.max(0, Math.round(n));
+  if (safe >= 1000) return `${(safe / 1000).toFixed(1)}k`;
+  return String(safe);
+}
+
+function formatStarDelta(n: number): string {
+  const safe = Math.max(0, Math.round(n));
+  if (safe >= 10_000) return `${(safe / 1000).toFixed(1)}k`;
+  return safe.toLocaleString("en-US");
+}
+
+export function formatGitHubDualBadges(stats: GitHubStats): {
+  zh: string;
+  "zh-TW": string;
+  en: string;
+  ja: string;
+} {
+  const totalStr = formatStarTotal(stats.totalStars);
+  const deltaStr = formatStarDelta(stats.starsDelta);
+
+  if (stats.deltaKind === "today") {
+    return {
+      zh: `★ ${totalStr} (+${deltaStr} 今日)`,
+      "zh-TW": `★ ${totalStr} (+${deltaStr} 今日)`,
+      en: `★ ${totalStr} (+${deltaStr} today)`,
+      ja: `★ ${totalStr} (+${deltaStr} 本日)`,
+    };
+  }
+
+  return {
+    zh: `★ ${totalStr} (+${deltaStr}/日)`,
+    "zh-TW": `★ ${totalStr} (+${deltaStr}/日)`,
+    en: `★ ${totalStr} (+${deltaStr}/d)`,
+    ja: `★ ${totalStr} (+${deltaStr}/日)`,
+  };
+}
+
+export function resolveGitHubStats(input: {
+  sourcePlatform: string;
+  rawMetric?: string;
+  publishedAt?: string;
+  githubStats?: GitHubStats;
+}): GitHubStats | null {
+  if (input.sourcePlatform !== "github") return null;
+
+  if (
+    input.githubStats &&
+    Number.isFinite(input.githubStats.totalStars) &&
+    Number.isFinite(input.githubStats.starsDelta)
+  ) {
+    return {
+      totalStars: Math.max(0, Math.round(input.githubStats.totalStars)),
+      starsDelta: Math.max(0, Math.round(input.githubStats.starsDelta)),
+      deltaKind: input.githubStats.deltaKind === "per_day" ? "per_day" : "today",
+    };
+  }
+
+  const metric = (input.rawMetric ?? "").trim();
+  if (!metric) return null;
+
+  const dualMatch = metric.match(
+    /[★⭐]\s*([\d,.]+\s*[kKmMbB]?)\s*\(\+\s*([\d,.]+\s*[kKmMbB]?)\s*(今日|today|本日|\/日|\/d)/i
+  );
+  if (dualMatch) {
+    const totalStars = parseCompactStarCount(dualMatch[1]);
+    const starsDelta = parseCompactStarCount(dualMatch[2]);
+    if (Number.isFinite(totalStars) && Number.isFinite(starsDelta)) {
+      const isPerDay = /^\/(日|d)$/i.test(dualMatch[3].trim());
+      return {
+        totalStars,
+        starsDelta,
+        deltaKind: isPerDay ? "per_day" : "today",
+      };
+    }
+  }
+
+  const starMatch =
+    metric.match(/[★⭐▲]\s*(?:今日|today|本日)?\s*\+?\s*([\d,.]+\s*[kKmMbB]?)/i) ??
+    metric.match(/([\d,.]+\s*[kKmMbB]?)\s*(?:stars?|星|github)/i);
+  if (starMatch) {
+    const parsedStars = parseCompactStarCount(starMatch[1]);
+    if (Number.isFinite(parsedStars) && parsedStars > 0) {
+      const pubTs = input.publishedAt ? Date.parse(input.publishedAt) : NaN;
+      const ageDays = Number.isFinite(pubTs)
+        ? Math.max(1, (Date.now() - pubTs) / (86400 * 1000))
+        : 7;
+      return {
+        totalStars: parsedStars,
+        starsDelta: Math.max(1, Math.round(parsedStars / ageDays)),
+        deltaKind: "per_day",
+      };
+    }
+  }
+
+  return null;
+}
+
 export interface DistillItemResult {
   item: SignalItem;
   usedLlm: boolean;
@@ -471,12 +582,17 @@ export async function distillRawItem(
         ? "pain_point"
         : "launch";
 
-  const sharedBadge = String(
-    distilled?.metricsBadge ||
-      distilled?.zh?.metricsBadge ||
-      raw.rawMetric ||
-      "Hot Signal"
-  ).trim();
+  const ghStats = resolveGitHubStats(raw);
+  const lockedGhBadges = ghStats ? formatGitHubDualBadges(ghStats) : null;
+
+  const sharedBadge = lockedGhBadges
+    ? lockedGhBadges.zh
+    : String(
+        distilled?.metricsBadge ||
+          distilled?.zh?.metricsBadge ||
+          raw.rawMetric ||
+          "Hot Signal"
+      ).trim();
 
   const rawMetricType = String(distilled?.metricType ?? "").trim();
   const normalizedMetricType: MetricType = validMetricTypes.includes(
@@ -509,7 +625,7 @@ export async function distillRawItem(
     businessSignal: `来自 ${raw.sourceSublabel} 一手社区信号（配置 LLM 密钥后自动生成深度拆解）。`,
     indieTakeaway:
       "点击右下角查看原帖真实数据与评论区反馈，验证细分场景需求。",
-    metricsBadge: sharedBadge,
+    metricsBadge: lockedGhBadges ? lockedGhBadges.zh : sharedBadge,
     tags: [fallbackTag],
   };
 
@@ -521,7 +637,7 @@ export async function distillRawItem(
     businessSignal: `First-hand community signal from ${raw.sourceSublabel} (${raw.rawMetric}).`,
     indieTakeaway:
       "Inspect the original thread and user comments to validate willingness to pay and niche positioning.",
-    metricsBadge: sharedBadge,
+    metricsBadge: lockedGhBadges ? lockedGhBadges.en : sharedBadge,
     tags: [fallbackTag],
   };
 
@@ -533,7 +649,7 @@ export async function distillRawItem(
     businessSignal: `${raw.sourceSublabel} からの一次シグナル（${raw.rawMetric}）。`,
     indieTakeaway:
       "右下の元記事リンクから実際の数値とコメント欄の反応を確認し、ニッチ需要を検証しましょう。",
-    metricsBadge: sharedBadge,
+    metricsBadge: lockedGhBadges ? lockedGhBadges.ja : sharedBadge,
     tags: [fallbackTag],
   };
 
@@ -542,6 +658,14 @@ export async function distillRawItem(
   const jaBlock = normalizeLocaleBlock(distilled?.ja, jaFallback, fallbackTag);
   // 繁中直接通过 OpenCC (cn -> twp) 本地零 Token 精准派生
   const zhTwBlock = deriveTraditionalFields(zhBlock);
+
+  // 强制锁死 GitHub 双指标角标，忽略大模型返回的随机缩水角标
+  if (lockedGhBadges) {
+    zhBlock.metricsBadge = lockedGhBadges.zh;
+    zhTwBlock.metricsBadge = lockedGhBadges["zh-TW"];
+    enBlock.metricsBadge = lockedGhBadges.en;
+    jaBlock.metricsBadge = lockedGhBadges.ja;
+  }
 
   const translations: SignalTranslations = {
     "zh-TW": zhTwBlock,
@@ -571,7 +695,9 @@ export async function distillRawItem(
       whatItIs: zhBlock.whatItIs,
       businessSignal: zhBlock.businessSignal,
       indieTakeaway: zhBlock.indieTakeaway,
-      metricsBadge: zhBlock.metricsBadge || sharedBadge,
+      metricsBadge: lockedGhBadges
+        ? lockedGhBadges.zh
+        : zhBlock.metricsBadge || sharedBadge,
       metricType: normalizedMetricType,
       tags: zhBlock.tags,
       translations,
@@ -670,20 +796,35 @@ export async function translateExistingSignalRow(
     };
   }
 
+  const ghRowStats = resolveGitHubStats({
+    sourcePlatform: row.sourcePlatform,
+    rawMetric: row.metricsBadge,
+  });
+  const lockedGhRowBadges = ghRowStats
+    ? formatGitHubDualBadges(ghRowStats)
+    : null;
+  if (lockedGhRowBadges) {
+    zhTw.metricsBadge = lockedGhRowBadges["zh-TW"];
+  }
+
+  const nextEn = hasValidEn
+    ? normalizeLocaleBlock(parsed?.en, enFallback, fallbackTag)
+    : existing.en;
+  const nextJa = hasValidJa
+    ? normalizeLocaleBlock(parsed?.ja, enFallback, fallbackTag)
+    : existing.ja;
+
+  if (lockedGhRowBadges) {
+    if (nextEn) nextEn.metricsBadge = lockedGhRowBadges.en;
+    if (nextJa) nextJa.metricsBadge = lockedGhRowBadges.ja;
+  }
+
   return {
     translations: {
       ...existing,
       "zh-TW": zhTw,
-      ...(hasValidEn
-        ? { en: normalizeLocaleBlock(parsed?.en, enFallback, fallbackTag) }
-        : existing.en
-          ? { en: existing.en }
-          : {}),
-      ...(hasValidJa
-        ? { ja: normalizeLocaleBlock(parsed?.ja, enFallback, fallbackTag) }
-        : existing.ja
-          ? { ja: existing.ja }
-          : {}),
+      ...(nextEn ? { en: nextEn } : {}),
+      ...(nextJa ? { ja: nextJa } : {}),
     },
     translatedByLlm: true,
     changed: true,

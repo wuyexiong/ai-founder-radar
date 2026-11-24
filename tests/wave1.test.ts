@@ -22,8 +22,11 @@ import { getDictionary } from "../src/i18n/dictionaries";
 import {
   distillRawItem,
   extractJsonGeneric,
+  formatGitHubDualBadges,
+  setDistillerTimingScaleForTests,
   translateExistingSignalRow,
 } from "../src/lib/ai-distiller";
+import { installFetchMock, jsonResponse } from "./helpers/env-guard";
 import { fetchViaJinaMarkdown } from "../src/lib/collectors/jina";
 import { isSafePublicHttpUrl } from "../src/lib/collectors/sources";
 import { localizeSourceSublabel } from "../src/lib/localize-sublabel";
@@ -403,5 +406,196 @@ test("on-demand revalidate API enforces secret auth and collects localized paths
   } finally {
     if (prevSecret === undefined) delete process.env.REVALIDATE_SECRET;
     else process.env.REVALIDATE_SECRET = prevSecret;
+  }
+});
+
+test("GitHub dual-metric badges across all 4 locales are locked and never overwritten by LLM", async () => {
+  // 1. Pure formatting assertions for both deltaKind modes
+  assert.deepEqual(
+    formatGitHubDualBadges({
+      totalStars: 14_100,
+      starsDelta: 908,
+      deltaKind: "today",
+    }),
+    {
+      zh: "★ 14.1k (+908 今日)",
+      "zh-TW": "★ 14.1k (+908 今日)",
+      en: "★ 14.1k (+908 today)",
+      ja: "★ 14.1k (+908 本日)",
+    }
+  );
+
+  assert.deepEqual(
+    formatGitHubDualBadges({
+      totalStars: 2_800,
+      starsDelta: 460,
+      deltaKind: "per_day",
+    }),
+    {
+      zh: "★ 2.8k (+460/日)",
+      "zh-TW": "★ 2.8k (+460/日)",
+      en: "★ 2.8k (+460/d)",
+      ja: "★ 2.8k (+460/日)",
+    }
+  );
+
+  // 2. End-to-end distillRawItem test: LLM tries to drop half of the metric in every locale
+  const prevEnv = {
+    CI: process.env.CI,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    LLM_API_KEY: process.env.LLM_API_KEY,
+  };
+  process.env.CI = "true";
+  process.env.GEMINI_API_KEY = "fake_gemini_key_for_github_badge_lock";
+  delete process.env.LLM_API_KEY;
+  setDistillerTimingScaleForTests(0);
+
+  const mock = installFetchMock(() =>
+    jsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  category: "ai_trend",
+                  metricType: "heat",
+                  score: 8.8,
+                  metricsBadge: "▲ 今日 2,037 星",
+                  zh: {
+                    title: "开源浏览器自动化工作流引擎",
+                    whatItIs: "面向 AI Agent 的无头浏览器自动化与回放工具。",
+                    businessSignal: "MIT 开源，官方提供云端托管沙箱订阅变现。",
+                    indieTakeaway: "可基于此封装垂直电商与外贸采集 SaaS。",
+                    metricsBadge: "▲ 今日 908 星",
+                    tags: ["#开源AI", "#Agent"],
+                  },
+                  en: {
+                    title: "Open-Source Headless Browser Workflow SDK for AI Agents",
+                    whatItIs: "Browser automation and replay studio built for LLM agents.",
+                    businessSignal: "MIT core with paid cloud browser sandbox.",
+                    indieTakeaway: "Wrap into vertical scraping micro-SaaS.",
+                    metricsBadge: "★ 14.1k Stars",
+                    tags: ["#OpenSource", "#AIAgents"],
+                  },
+                  ja: {
+                    title: "AIエージェント向けOSSヘッドレスブラウザ自動化SDK",
+                    whatItIs: "LLMエージェント専用のブラウザ操作・リプレイ基盤。",
+                    businessSignal: "MITライセンス＋クラウド版で収益化。",
+                    indieTakeaway: "特化型自動操作SaaSへの応用が可能。",
+                    metricsBadge: "★ 14.1k",
+                    tags: ["#OSS", "#AIエージェント"],
+                  },
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    })
+  );
+
+  try {
+    // Case A: deltaKind = "today" via structured githubStats
+    const todayRes = await distillRawItem(
+      {
+        title: "acme/agent-browser — Headless browser workflow SDK",
+        summary: "GitHub Trending Daily (TypeScript, ★ 14,100, +908 stars today)",
+        url: "https://github.com/acme/agent-browser",
+        sourcePlatform: "github",
+        sourceSublabel: "GitHub Trending",
+        rawMetric: "★ 14.1k (+908 今日)",
+        publishedAt: "2026-11-24T01:00:00.000Z",
+        githubStats: {
+          totalStars: 14_100,
+          starsDelta: 908,
+          deltaKind: "today",
+        },
+      },
+      "2026-11-24",
+      0
+    );
+
+    assert.equal(todayRes.usedLlm, true);
+    assert.equal(todayRes.item.metricsBadge, "★ 14.1k (+908 今日)");
+    assert.equal(
+      todayRes.item.translations?.["zh-TW"]?.metricsBadge,
+      "★ 14.1k (+908 今日)"
+    );
+    assert.equal(
+      todayRes.item.translations?.en?.metricsBadge,
+      "★ 14.1k (+908 today)"
+    );
+    assert.equal(
+      todayRes.item.translations?.ja?.metricsBadge,
+      "★ 14.1k (+908 本日)"
+    );
+
+    // Case B: deltaKind = "per_day" via structured githubStats
+    const perDayRes = await distillRawItem(
+      {
+        title: "indie/mcp-billing — Stripe metering gateway for MCP",
+        summary: "7-Day Breakout Open-Source Repo (TypeScript, ★ 2800)",
+        url: "https://github.com/indie/mcp-billing",
+        sourcePlatform: "github",
+        sourceSublabel: "GitHub 7日新锐",
+        rawMetric: "★ 2.8k (+460/日)",
+        publishedAt: "2026-11-18T01:00:00.000Z",
+        githubStats: {
+          totalStars: 2_800,
+          starsDelta: 460,
+          deltaKind: "per_day",
+        },
+      },
+      "2026-11-24",
+      0
+    );
+
+    assert.equal(perDayRes.usedLlm, true);
+    assert.equal(perDayRes.item.metricsBadge, "★ 2.8k (+460/日)");
+    assert.equal(
+      perDayRes.item.translations?.["zh-TW"]?.metricsBadge,
+      "★ 2.8k (+460/日)"
+    );
+    assert.equal(
+      perDayRes.item.translations?.en?.metricsBadge,
+      "★ 2.8k (+460/d)"
+    );
+    assert.equal(
+      perDayRes.item.translations?.ja?.metricsBadge,
+      "★ 2.8k (+460/日)"
+    );
+
+    // Case C: Fallback parsing from rawMetric when githubStats is omitted
+    const parsedFromMetricRes = await distillRawItem(
+      {
+        title: "rust-ai/fast-rag — Rust RAG engine",
+        summary: "GitHub Trending Rust",
+        url: "https://github.com/rust-ai/fast-rag",
+        sourcePlatform: "github",
+        sourceSublabel: "GitHub Trending",
+        rawMetric: "★ 6.2k (+512 今日)",
+        publishedAt: "2026-11-24T01:00:00.000Z",
+      },
+      "2026-11-24",
+      0
+    );
+
+    assert.equal(parsedFromMetricRes.item.metricsBadge, "★ 6.2k (+512 今日)");
+    assert.equal(
+      parsedFromMetricRes.item.translations?.en?.metricsBadge,
+      "★ 6.2k (+512 today)"
+    );
+    assert.equal(
+      parsedFromMetricRes.item.translations?.ja?.metricsBadge,
+      "★ 6.2k (+512 本日)"
+    );
+  } finally {
+    mock.restore();
+    setDistillerTimingScaleForTests(1);
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 });
