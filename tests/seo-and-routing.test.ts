@@ -41,6 +41,7 @@ import {
 } from "../src/lib/seo-taxonomy";
 import {
   getAllAvailableDates,
+  getIndexableSignalEntries,
   getRadarPayload,
   getSeoHubIndex,
   getSourceHubPayload,
@@ -229,6 +230,7 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
 
       const dates = await getAllAvailableDates();
       const hubIndex = await getSeoHubIndex();
+      const indexedSignals = await getIndexableSignalEntries();
       const mapEntries = await sitemap();
       assert.equal(
         mapEntries.length,
@@ -236,7 +238,13 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
           (1 +
             dates.length +
             hubIndex.topics.length +
-            hubIndex.sources.length)
+            hubIndex.sources.length +
+            indexedSignals.length)
+      );
+      assert.ok(
+        mapEntries.some(
+          (e) => e.url === "https://radar.aibuildon.com/en/signal/sig-20261123-01"
+        )
       );
 
       // Populated programmatic SEO hubs are included in sitemap
@@ -368,6 +376,19 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
       assert.equal(
         sourceRes.headers.get("location"),
         "https://radar.aibuildon.com/en/source/trustmrr"
+      );
+
+      const signalReq = new NextRequest(
+        "https://radar.aibuildon.com/signal/sig-20261123-01",
+        {
+          headers: { "accept-language": "zh-CN,zh;q=0.9" },
+        }
+      );
+      const signalRes = middleware(signalReq);
+      assert.equal(signalRes.status, 307);
+      assert.equal(
+        signalRes.headers.get("location"),
+        "https://radar.aibuildon.com/zh/signal/sig-20261123-01"
       );
     });
 

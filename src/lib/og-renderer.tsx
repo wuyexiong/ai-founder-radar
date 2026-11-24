@@ -17,7 +17,13 @@ export const OG_LOCALE_BADGES: Record<Locale, string> = {
   ja: "JA",
 };
 
-export type OgCardKind = "default" | "home" | "daily" | "topic" | "source";
+export type OgCardKind =
+  | "default"
+  | "home"
+  | "daily"
+  | "topic"
+  | "source"
+  | "signal";
 
 /**
  * 100% 离线 Satori 安全文本净化器：
@@ -135,6 +141,8 @@ function getKindBadgeText(kind: OgCardKind): string {
       return "NICHE HUB";
     case "source":
       return "SOURCE HUB";
+    case "signal":
+      return "SIGNAL BRIEF";
     default:
       return "SIGNAL TERMINAL";
   }
@@ -364,13 +372,51 @@ export function renderRadarOgImage(params: RenderRadarOgParams): ImageResponse {
                 </svg>
               )}
               <span>
-                {stats.signalCount > 0
-                  ? `TOP #1: ${stats.topMetricBadge}`
-                  : stats.topMetricBadge}
+                {params.kind === "signal"
+                  ? stats.topMetricBadge
+                  : stats.signalCount > 0
+                    ? `TOP #1: ${stats.topMetricBadge}`
+                    : stats.topMetricBadge}
               </span>
             </div>
 
-            {stats.signalCount > 0 ? (
+            {params.kind === "signal" && params.items?.[0] ? (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "10px 18px",
+                    borderRadius: "999px",
+                    backgroundColor: "#111827",
+                    border: "1px solid #1F2937",
+                    color: "#93C5FD",
+                    fontSize: "18px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {`SCORE ${stats.peakScoreText}/10`}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "10px 18px",
+                    borderRadius: "999px",
+                    backgroundColor: "#111827",
+                    border: "1px solid #1F2937",
+                    color: "#E2E8F0",
+                    fontSize: "18px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {sanitizeOgText(
+                    params.items[0].sourcePlatform.toUpperCase(),
+                    24
+                  )}
+                </div>
+              </>
+            ) : stats.signalCount > 0 ? (
               <>
                 <div
                   style={{

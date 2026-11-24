@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { getSiteUrl, HREFLANG_MAP, LOCALES } from "@/i18n/config";
-import { getAllAvailableDates, getSeoHubIndex } from "@/lib/signals-repo";
+import {
+  getAllAvailableDates,
+  getIndexableSignalEntries,
+  getSeoHubIndex,
+} from "@/lib/signals-repo";
 
 export const revalidate = 3600;
 
@@ -11,9 +15,10 @@ function parseSafeLastMod(dateKey: string, fallback: Date): Date {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
-  const [dates, hubIndex] = await Promise.all([
+  const [dates, hubIndex, indexedSignals] = await Promise.all([
     getAllAvailableDates(),
     getSeoHubIndex(),
+    getIndexableSignalEntries(),
   ]);
   const now = new Date();
 
@@ -101,6 +106,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.8,
         alternates: {
           languages: dayAlternates,
+        },
+      });
+    }
+  }
+
+  // 5. 高价值单条商业信号独立 SEO 详情页（indexedSignals × 4 语种）
+  for (const sig of indexedSignals) {
+    const encodedId = encodeURIComponent(sig.id);
+    const sigAlternates: Record<string, string> = {};
+    for (const loc of LOCALES) {
+      sigAlternates[HREFLANG_MAP[loc]] =
+        `${siteUrl}/${loc}/signal/${encodedId}`;
+    }
+    sigAlternates["x-default"] = `${siteUrl}/en/signal/${encodedId}`;
+    const lastMod = parseSafeLastMod(sig.dateKey, now);
+
+    for (const loc of LOCALES) {
+      entries.push({
+        url: `${siteUrl}/${loc}/signal/${encodedId}`,
+        lastModified: lastMod,
+        changeFrequency: "monthly",
+        priority: 0.84,
+        alternates: {
+          languages: sigAlternates,
         },
       });
     }

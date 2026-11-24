@@ -154,6 +154,151 @@ export function buildRadarJsonLd({
   };
 }
 
+export interface BuildSignalDetailSeoParams {
+  locale: Locale;
+  item: SignalItem;
+}
+
+export function buildSignalDetailMetadata({
+  locale,
+  item,
+}: BuildSignalDetailSeoParams): Metadata {
+  const siteUrl = getSiteUrl();
+  const canonicalPath = `/${locale}/signal/${encodeURIComponent(item.id)}`;
+  const ogImagePath = `/og/${locale}/signal/${encodeURIComponent(item.id)}`;
+  const badgePrefix = item.metricsBadge.trim()
+    ? `[${item.metricsBadge.trim()}] `
+    : "";
+  const title = `${badgePrefix}${item.title} | AI Founder Radar`;
+  const description = [item.whatItIs, item.businessSignal, item.indieTakeaway]
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 260);
+
+  const languages: Record<string, string> = {};
+  for (const loc of LOCALES) {
+    languages[HREFLANG_MAP[loc]] =
+      `${siteUrl}/${loc}/signal/${encodeURIComponent(item.id)}`;
+  }
+  languages["x-default"] =
+    `${siteUrl}/en/signal/${encodeURIComponent(item.id)}`;
+
+  return {
+    metadataBase: new URL(siteUrl),
+    title,
+    description,
+    alternates: {
+      canonical: `${siteUrl}${canonicalPath}`,
+      languages,
+      types: {
+        "application/rss+xml": `${siteUrl}/${locale}/feed.xml`,
+      },
+    },
+    openGraph: {
+      title,
+      description,
+      url: `${siteUrl}${canonicalPath}`,
+      siteName: "AI Founder Radar",
+      locale: HREFLANG_MAP[locale].replace("-", "_"),
+      type: "article",
+      images: [
+        {
+          url: ogImagePath,
+          width: 1200,
+          height: 630,
+          alt: title,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImagePath],
+    },
+    robots: {
+      index: true,
+      follow: true,
+    },
+    ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim()
+      ? {
+          verification: {
+            google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION.trim(),
+          },
+        }
+      : {}),
+  };
+}
+
+export function buildSignalDetailJsonLd({
+  locale,
+  item,
+}: BuildSignalDetailSeoParams) {
+  const dict = getDictionary(locale);
+  const siteUrl = getSiteUrl();
+  const homeUrl = `${siteUrl}/${locale}`;
+  const dailyUrl = `${siteUrl}/${locale}/daily/${item.dateKey}`;
+  const pageUrl = `${siteUrl}/${locale}/signal/${encodeURIComponent(item.id)}`;
+
+  const externalUrls = [item.productUrl, item.discussionUrl, item.sourceUrl]
+    .map((u) => toSafeHttpUrl(u))
+    .filter((u) => u !== "#");
+  const uniqueSameAs = Array.from(new Set(externalUrls));
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${siteUrl}/#website`,
+        url: siteUrl,
+        name: "AI Founder Radar",
+        description: dict.meta.siteDescription,
+        inLanguage: HREFLANG_MAP[locale],
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${pageUrl}#breadcrumb`,
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: dict.hub.breadcrumbHome,
+            item: homeUrl,
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: dict.signalDetail.breadcrumbDaily(item.dateKey),
+            item: dailyUrl,
+          },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: item.title,
+            item: pageUrl,
+          },
+        ],
+      },
+      {
+        "@type": "Article",
+        "@id": `${pageUrl}#article`,
+        url: pageUrl,
+        mainEntityOfPage: pageUrl,
+        headline: item.title,
+        description: `${item.whatItIs} ${item.businessSignal}`,
+        datePublished: item.dateKey,
+        dateModified: item.dateKey,
+        inLanguage: HREFLANG_MAP[locale],
+        isPartOf: { "@id": `${siteUrl}/#website` },
+        breadcrumb: { "@id": `${pageUrl}#breadcrumb` },
+        ...(uniqueSameAs.length > 0 ? { sameAs: uniqueSameAs } : {}),
+      },
+    ],
+  };
+}
+
 export interface BuildHubSeoParams {
   locale: Locale;
   kind: "topic" | "source";

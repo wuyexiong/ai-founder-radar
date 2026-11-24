@@ -61,11 +61,12 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // 2. 兼容无语言前缀的 /daily/YYYY-MM-DD、/topic/[tag]、/source/[platform]
+  // 2. 兼容无语言前缀的 /daily/YYYY-MM-DD、/topic/[tag]、/source/[platform]、/signal/[id]
   if (
     firstSegment === "daily" ||
     firstSegment === "topic" ||
-    firstSegment === "source"
+    firstSegment === "source" ||
+    firstSegment === "signal"
   ) {
     const preferred = detectPreferredLocale(
       request.headers.get("accept-language"),

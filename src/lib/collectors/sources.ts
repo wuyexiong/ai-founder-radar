@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
-import type { SourcePlatform } from "@/types/signal";
+import type { SignalMetaFields, SourcePlatform } from "@/types/signal";
 
 export interface GitHubStats {
   totalStars: number;
@@ -17,6 +17,7 @@ export interface RawFetchedItem {
   rawMetric: string;
   publishedAt: string;
   githubStats?: GitHubStats;
+  launchMeta?: SignalMetaFields;
 }
 
 const USER_AGENT =
@@ -320,8 +321,14 @@ export async function fetchHackerNewsShowHN(
 
       const enriched = await Promise.all(
         scored.map(async ({ hit }) => {
-          const targetUrl =
-            hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`;
+          const hnThreadUrl = `https://news.ycombinator.com/item?id=${hit.objectID}`;
+          const targetUrl = hit.url || hnThreadUrl;
+          const externalProductUrl =
+            hit.url &&
+            isSafePublicHttpUrl(hit.url) &&
+            !/news\.ycombinator\.com/i.test(hit.url)
+              ? hit.url
+              : undefined;
           let bodyText = hit.story_text ? decodeXmlEntities(hit.story_text) : "";
 
           // 若外链帖缺少正文，自动并发提取作者首评自述 + 产品官网 meta description
@@ -371,6 +378,10 @@ export async function fetchHackerNewsShowHN(
             sourceSublabel: "Show HN",
             rawMetric: `▲ ${hit.points ?? 0} HN · 💬 ${hit.num_comments ?? 0}`,
             publishedAt: hit.created_at || new Date().toISOString(),
+            launchMeta: {
+              ...(externalProductUrl ? { productUrl: externalProductUrl } : {}),
+              discussionUrl: hnThreadUrl,
+            },
           };
         })
       );
@@ -417,17 +428,30 @@ export async function fetchHackerNewsShowHN(
         return !HN_TOY_PATTERN.test(s.title) || HN_COMMERCIAL_PATTERN.test(s.title);
       })
       .slice(0, limit)
-      .map((s) => ({
-        title: s.title!,
-        summary: s.text ? decodeXmlEntities(s.text).slice(0, 450) : s.title!,
-        url: s.url || `https://news.ycombinator.com/item?id=${s.id}`,
-        sourcePlatform: "hackernews" as const,
-        sourceSublabel: "Show HN",
-        rawMetric: `▲ ${s.score ?? 0} HN · 💬 ${s.descendants ?? 0}`,
-        publishedAt: s.time
-          ? new Date(s.time * 1000).toISOString()
-          : new Date().toISOString(),
-      }));
+      .map((s) => {
+        const hnThreadUrl = `https://news.ycombinator.com/item?id=${s.id}`;
+        const externalUrl =
+          s.url &&
+          isSafePublicHttpUrl(s.url) &&
+          !/news\.ycombinator\.com/i.test(s.url)
+            ? s.url
+            : undefined;
+        return {
+          title: s.title!,
+          summary: s.text ? decodeXmlEntities(s.text).slice(0, 450) : s.title!,
+          url: s.url || hnThreadUrl,
+          sourcePlatform: "hackernews" as const,
+          sourceSublabel: "Show HN",
+          rawMetric: `▲ ${s.score ?? 0} HN · 💬 ${s.descendants ?? 0}`,
+          publishedAt: s.time
+            ? new Date(s.time * 1000).toISOString()
+            : new Date().toISOString(),
+          launchMeta: {
+            ...(externalUrl ? { productUrl: externalUrl } : {}),
+            discussionUrl: hnThreadUrl,
+          },
+        };
+      });
   } catch (err) {
     console.warn("[Collector] Hacker News Show HN skipped:", err);
     return [];
@@ -554,6 +578,13 @@ export async function fetchIndieHackers(
         const productUrl = m[1].split("#")[0];
         if (excludeUrls?.has(productUrl)) continue;
         const productName = m[2].trim();
+        const externalSiteRaw = m[3]?.trim();
+        const externalSiteUrl =
+          externalSiteRaw &&
+          isSafePublicHttpUrl(externalSiteRaw) &&
+          !/indiehackers\.com/i.test(externalSiteRaw)
+            ? externalSiteRaw
+            : undefined;
         const blurb = m[4].replace(/\s+/g, " ").trim();
         const upvotes = Number(m[5] ?? "0");
         const revenueMatch = blurb.match(
@@ -570,6 +601,10 @@ export async function fetchIndieHackers(
             ? `${revenueMatch[1]} · ▲ ${upvotes}`
             : `IH 新品榜 · ▲ ${upvotes}`,
           publishedAt: new Date().toISOString(),
+          launchMeta: {
+            ...(externalSiteUrl ? { productUrl: externalSiteUrl } : {}),
+            discussionUrl: productUrl,
+          },
           rank: upvotes * 3 + (revenueMatch ? 35 : 10),
           needBodyFetch: false,
         });

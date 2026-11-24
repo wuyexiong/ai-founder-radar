@@ -211,6 +211,17 @@ export function sanitizeSavedSignalItem(raw: unknown): SignalItem | null {
         .map((t) => t.trim().slice(0, 64))
     : undefined;
 
+  const safeProductUrl =
+    typeof obj.productUrl === "string" ? toSafeHttpUrl(obj.productUrl) : "#";
+  const safeDiscussionUrl =
+    typeof obj.discussionUrl === "string"
+      ? toSafeHttpUrl(obj.discussionUrl)
+      : "#";
+  const ageBadge =
+    typeof obj.ageBadge === "string" && obj.ageBadge.trim()
+      ? cleanSingleLine(obj.ageBadge).slice(0, 64)
+      : undefined;
+
   return {
     id,
     dateKey,
@@ -250,6 +261,9 @@ export function sanitizeSavedSignalItem(raw: unknown): SignalItem | null {
         ? obj.sourceSublabel.trim().slice(0, 120)
         : "",
     sourceUrl: safeSourceUrl,
+    ...(safeProductUrl !== "#" ? { productUrl: safeProductUrl } : {}),
+    ...(safeDiscussionUrl !== "#" ? { discussionUrl: safeDiscussionUrl } : {}),
+    ...(ageBadge ? { ageBadge } : {}),
     publishedAt:
       typeof obj.publishedAt === "string" && obj.publishedAt.trim()
         ? obj.publishedAt.trim().slice(0, 64)

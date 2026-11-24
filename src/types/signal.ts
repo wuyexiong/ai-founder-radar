@@ -23,9 +23,21 @@ export interface LocalizedSignalFields {
   tags: string[];
 }
 
+export interface SignalMetaFields {
+  productUrl?: string;
+  discussionUrl?: string;
+  launchedAt?: string;
+  releaseYear?: number;
+  ageDays?: number;
+  ageMonths?: number;
+  ageKind?: "appstore_release" | "repo_created";
+}
+
 export type SignalTranslations = Partial<
   Record<Exclude<Locale, "zh">, LocalizedSignalFields>
->;
+> & {
+  _meta?: SignalMetaFields;
+};
 
 export type SummaryTranslations = Partial<Record<Exclude<Locale, "zh">, string>>;
 
@@ -47,6 +59,9 @@ export interface SignalItem {
   sourcePlatform: SourcePlatform;
   sourceSublabel: string;
   sourceUrl: string;
+  productUrl?: string;
+  discussionUrl?: string;
+  ageBadge?: string;
   publishedAt: string;
   topics?: string[];
   translations?: SignalTranslations;

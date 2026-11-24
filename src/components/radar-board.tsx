@@ -781,12 +781,17 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       return [];
     }
     const visibleIds = new Set(filteredItems.map((it) => it.id));
-    return archiveSearchResults.filter((it) => !visibleIds.has(it.id));
+    return archiveSearchResults.filter((it) => {
+      if (visibleIds.has(it.id)) return false;
+      if (activeTag && !it.tags.includes(activeTag)) return false;
+      return true;
+    });
   }, [
     searchRequestKey,
     completedSearchKey,
     archiveSearchResults,
     filteredItems,
+    activeTag,
   ]);
 
   const topThreeItems = useMemo(() => {
@@ -829,7 +834,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     setActiveTag(tag);
     const hasInScoped = platformScopedItems.some((i) => i.tags.includes(tag));
     if (!hasInScoped) {
-      setActiveTab("all");
+      const hasInSaved =
+        activeTab === "saved" && savedItems.some((i) => i.tags.includes(tag));
+      if (!hasInSaved) {
+        setActiveTab("all");
+      }
       setActivePlatform(null);
     }
   };

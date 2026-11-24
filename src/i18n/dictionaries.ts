@@ -1,6 +1,12 @@
 import type { Locale } from "@/i18n/config";
 import type { IndieToolItem, SignalCategory } from "@/types/signal";
 
+export interface CardLensLabels {
+  whatItIs: string;
+  monetization: string;
+  playbook: string;
+}
+
 export interface Dictionary {
   meta: {
     siteTitle: string;
@@ -68,9 +74,11 @@ export interface Dictionary {
   card: {
     categories: Record<SignalCategory, string>;
     scoreTooltip: string;
+    topPickTooltip: (score: string) => string;
     whatItIs: string;
     monetization: string;
     playbook: string;
+    lensByCategory: Record<SignalCategory, CardLensLabels>;
     copyBrief: string;
     copiedBrief: string;
     copyBriefTooltip: string;
@@ -79,7 +87,19 @@ export interface Dictionary {
     saved: string;
     save: string;
     viewSource: string;
+    visitProduct: string;
+    readDetail: string;
     archivedFrom: (date: string) => string;
+  };
+  signalDetail: {
+    breadcrumbDaily: (date: string) => string;
+    breadcrumbSignal: string;
+    backToIssue: (date: string) => string;
+    visitProductCta: string;
+    viewOriginalCta: string;
+    copyShareCta: string;
+    relatedHeading: string;
+    relatedSubnote: string;
   };
   sidebar: {
     top3Title: string;
@@ -219,9 +239,33 @@ const EN_DICT: Dictionary = {
       ai_trend: "AI & OSS",
     },
     scoreTooltip: "AI Commercial Signal Score (1–10)",
+    topPickTooltip: (score) =>
+      `Top Pick (${score}/10) — High-signal commercial benchmark`,
     whatItIs: "📌 What it is:",
     monetization: "💵 Monetization:",
     playbook: "💡 Indie Playbook:",
+    lensByCategory: {
+      revenue: {
+        whatItIs: "📌 What it is:",
+        monetization: "💵 Revenue:",
+        playbook: "💡 Playbook:",
+      },
+      launch: {
+        whatItIs: "📌 What it is:",
+        monetization: "💵 Pricing:",
+        playbook: "💡 Playbook:",
+      },
+      pain_point: {
+        whatItIs: "😤 Buyer pain:",
+        monetization: "🔥 Demand:",
+        playbook: "🎯 MVP wedge:",
+      },
+      ai_trend: {
+        whatItIs: "🧩 What it does:",
+        monetization: "⚖️ Traction:",
+        playbook: "🛠️ Wedge:",
+      },
+    },
     copyBrief: "Copy",
     copiedBrief: "Copied",
     copyBriefTooltip: "Copy 3-point brief & permanent share link",
@@ -230,7 +274,20 @@ const EN_DICT: Dictionary = {
     saved: "Saved",
     save: "Save",
     viewSource: "Source",
+    visitProduct: "Website",
+    readDetail: "Full Breakdown",
     archivedFrom: (date) => `Saved from ${date}`,
+  },
+  signalDetail: {
+    breadcrumbDaily: (date) => `${date} Briefing`,
+    breadcrumbSignal: "Signal Analysis",
+    backToIssue: (date) => `← Back to ${date} Briefing`,
+    visitProductCta: "Visit Product Website",
+    viewOriginalCta: "Read Original Post",
+    copyShareCta: "Copy Brief & Link",
+    relatedHeading: "Related High-Signal Cases",
+    relatedSubnote:
+      "Cross-referenced from the AI Founder Radar archive by niche & monetization model",
   },
   sidebar: {
     top3Title: "🏆 Today's Top 3 Signals",
@@ -408,9 +465,33 @@ const ZH_DICT: Dictionary = {
       ai_trend: "AI 与开源",
     },
     scoreTooltip: "AI 商业参考价值评分",
+    topPickTooltip: (score) =>
+      `今日必读精选（${score}/10）· 高含金量商业样本`,
     whatItIs: "📌 是什么：",
     monetization: "💵 怎么赚：",
     playbook: "💡 抄作业：",
+    lensByCategory: {
+      revenue: {
+        whatItIs: "📌 是什么：",
+        monetization: "💵 怎么赚：",
+        playbook: "💡 抄作业：",
+      },
+      launch: {
+        whatItIs: "📌 是什么：",
+        monetization: "💵 商业化：",
+        playbook: "💡 抄作业：",
+      },
+      pain_point: {
+        whatItIs: "😤 谁在痛：",
+        monetization: "🔥 付费点：",
+        playbook: "🎯 破局点：",
+      },
+      ai_trend: {
+        whatItIs: "🧩 是什么：",
+        monetization: "⚖️ 商业面：",
+        playbook: "🛠️ 切入点：",
+      },
+    },
     copyBrief: "复制",
     copiedBrief: "已复制",
     copyBriefTooltip: "一键复制三要素摘要与分享锚点链接",
@@ -419,7 +500,19 @@ const ZH_DICT: Dictionary = {
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
+    visitProduct: "直达官网",
+    readDetail: "查看拆解详情",
     archivedFrom: (date) => `收藏自 ${date}`,
+  },
+  signalDetail: {
+    breadcrumbDaily: (date) => `${date} 日报`,
+    breadcrumbSignal: "信号拆解详情",
+    backToIssue: (date) => `← 返回 ${date} 当期日报`,
+    visitProductCta: "直达产品官网",
+    viewOriginalCta: "查看一手原帖",
+    copyShareCta: "复制三要素与链接",
+    relatedHeading: "同赛道延伸高分案例",
+    relatedSubnote: "按相同商业赛道与变现切口交叉匹配的历史精选信号",
   },
   sidebar: {
     top3Title: "🏆 当日高分商机 Top 3",
@@ -596,9 +689,33 @@ const ZH_TW_DICT: Dictionary = {
       ai_trend: "AI 與開源",
     },
     scoreTooltip: "AI 商業參考價值評分",
+    topPickTooltip: (score) =>
+      `今日必讀精選（${score}/10）· 高含金量商業樣本`,
     whatItIs: "📌 是什麼：",
     monetization: "💵 怎麼賺：",
     playbook: "💡 抄作業：",
+    lensByCategory: {
+      revenue: {
+        whatItIs: "📌 是什麼：",
+        monetization: "💵 怎麼賺：",
+        playbook: "💡 抄作業：",
+      },
+      launch: {
+        whatItIs: "📌 是什麼：",
+        monetization: "💵 商業化：",
+        playbook: "💡 抄作業：",
+      },
+      pain_point: {
+        whatItIs: "😤 誰在痛：",
+        monetization: "🔥 付費點：",
+        playbook: "🎯 破局點：",
+      },
+      ai_trend: {
+        whatItIs: "🧩 是什麼：",
+        monetization: "⚖️ 商業面：",
+        playbook: "🛠️ 切入點：",
+      },
+    },
     copyBrief: "複製",
     copiedBrief: "已複製",
     copyBriefTooltip: "一鍵複製三要素摘要與分享連結",
@@ -607,7 +724,19 @@ const ZH_TW_DICT: Dictionary = {
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
+    visitProduct: "直達官網",
+    readDetail: "檢視拆解詳情",
     archivedFrom: (date) => `收藏自 ${date}`,
+  },
+  signalDetail: {
+    breadcrumbDaily: (date) => `${date} 日報`,
+    breadcrumbSignal: "信號拆解詳情",
+    backToIssue: (date) => `← 返回 ${date} 當期日報`,
+    visitProductCta: "直達產品官網",
+    viewOriginalCta: "檢視一手原帖",
+    copyShareCta: "複製三要素與連結",
+    relatedHeading: "同賽道延伸高分案例",
+    relatedSubnote: "按相同商業賽道與變現切角交叉匹配的歷史精選信號",
   },
   sidebar: {
     top3Title: "🏆 當日高分商機 Top 3",
@@ -784,9 +913,33 @@ const JA_DICT: Dictionary = {
       ai_trend: "AI・OSS",
     },
     scoreTooltip: "AI ビジネス参考スコア (1〜10)",
+    topPickTooltip: (score) =>
+      `必読厳選シグナル (${score}/10) · 高再現性ビジネス事例`,
     whatItIs: "📌 概要：",
     monetization: "💵 収益モデル：",
     playbook: "💡 個人開発のヒント：",
+    lensByCategory: {
+      revenue: {
+        whatItIs: "📌 製品概要：",
+        monetization: "💵 収益構造：",
+        playbook: "💡 再現戦略：",
+      },
+      launch: {
+        whatItIs: "📌 製品概要：",
+        monetization: "💵 課金設計：",
+        playbook: "💡 再現戦略：",
+      },
+      pain_point: {
+        whatItIs: "😤 課題背景：",
+        monetization: "🔥 需要強度：",
+        playbook: "🎯 参入余地：",
+      },
+      ai_trend: {
+        whatItIs: "🧩 技術概要：",
+        monetization: "⚖️ 商用価値：",
+        playbook: "🛠️ 活用戦略：",
+      },
+    },
     copyBrief: "コピー",
     copiedBrief: "コピー済",
     copyBriefTooltip: "3行要約とパーマリンクをコピー",
@@ -795,7 +948,19 @@ const JA_DICT: Dictionary = {
     saved: "保存済み",
     save: "保存",
     viewSource: "元記事",
+    visitProduct: "公式サイト",
+    readDetail: "詳細分析を見る",
     archivedFrom: (date) => `${date} の保存`,
+  },
+  signalDetail: {
+    breadcrumbDaily: (date) => `${date} 号`,
+    breadcrumbSignal: "シグナル詳細分析",
+    backToIssue: (date) => `← ${date} の一覧へ戻る`,
+    visitProductCta: "公式サイトを開く",
+    viewOriginalCta: "一次情報（元記事）を見る",
+    copyShareCta: "要約とリンクをコピー",
+    relatedHeading: "関連する高スコア事例",
+    relatedSubnote: "同じニッチ領域・収益モデルから抽出した厳選シグナル",
   },
   sidebar: {
     top3Title: "🏆 本日の高スコア Top 3",
@@ -895,4 +1060,18 @@ const DICTIONARIES: Record<Locale, Dictionary> = {
 
 export function getDictionary(locale: Locale): Dictionary {
   return DICTIONARIES[locale] ?? EN_DICT;
+}
+
+export function getCardLensLabels(
+  cardDict: Dictionary["card"],
+  category: SignalCategory
+): CardLensLabels {
+  return (
+    cardDict.lensByCategory?.[category] ??
+    cardDict.lensByCategory?.launch ?? {
+      whatItIs: cardDict.whatItIs,
+      monetization: cardDict.monetization,
+      playbook: cardDict.playbook,
+    }
+  );
 }

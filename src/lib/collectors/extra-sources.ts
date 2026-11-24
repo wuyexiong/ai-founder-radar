@@ -124,15 +124,16 @@ export async function fetchTrustMrr(
         ].filter(Boolean);
 
         candidates.push({
-          title: revStr
-            ? `${cleanTitlePart} — Verified Revenue ${revStr}`
-            : cleanTitlePart,
+          title: cleanTitlePart,
           summary: `TrustMRR Stripe/Payment-verified startup: ${cardInfo}`,
           url: startupUrl,
           sourcePlatform: "trustmrr",
           sourceSublabel: "TrustMRR 实名榜",
           rawMetric: metricParts.slice(0, 2).join(" · ") || "Stripe 实名验证",
           publishedAt: new Date().toISOString(),
+          launchMeta: {
+            discussionUrl: startupUrl,
+          },
           rankScore:
             revAmount > 0 ? Math.min(90, Math.log10(revAmount + 10) * 18) : 36,
           slugUrl: startupUrl,
@@ -218,6 +219,27 @@ export async function fetchTrustMrr(
               const h1Idx = afterHeader.search(/^#\s+[^\n]+/m);
               const mainSection =
                 h1Idx !== -1 ? afterHeader.slice(h1Idx) : afterHeader;
+
+              // 提取 TrustMRR 详情页内的产品独立官网外链（排除社交账号与支付商域名）
+              const extUrlMatches = [
+                ...mainSection.matchAll(/\[[^\]]+\]\((https:\/\/[^\s\)]+)\)/gi),
+              ];
+              const externalStartupSite = extUrlMatches
+                .map((m) => m[1].replace(/[.,;]+$/, "").trim())
+                .find(
+                  (u) =>
+                    isSafeHttpsUrl(u) &&
+                    !/(^|\.)(trustmrr\.com|x\.com|twitter\.com|stripe\.com|polar\.sh|revenuecat\.com|linkedin\.com|youtube\.com|facebook\.com|instagram\.com)$/i.test(
+                      new URL(u).hostname
+                    )
+                );
+              if (externalStartupSite) {
+                item.launchMeta = {
+                  ...item.launchMeta,
+                  productUrl: externalStartupSite,
+                  discussionUrl: item.slugUrl,
+                };
+              }
 
               const cleanBody = mainSection
                 .replace(/!\[[^\]]*\]\([^\)]+\)/g, "")
@@ -366,7 +388,17 @@ export async function fetchAppStoreTopGrossing(
             sourcePlatform: "appstore" as const,
             sourceSublabel: `${chart.sublabel} #${rank}`,
             rawMetric: `${chart.sublabel} #${rank}${yearTag}`,
-            publishedAt: new Date().toISOString(),
+            publishedAt: Number.isFinite(releaseTs)
+              ? new Date(releaseTs).toISOString()
+              : new Date().toISOString(),
+            launchMeta: Number.isFinite(releaseTs)
+              ? {
+                  launchedAt: new Date(releaseTs).toISOString(),
+                  ...(releaseYear ? { releaseYear } : {}),
+                  ageMonths: Math.max(0, Math.round(ageMonths)),
+                  ageKind: "appstore_release" as const,
+                }
+              : undefined,
             score: totalScore,
             bundleId,
           };
@@ -685,7 +717,9 @@ export async function fetchGitHubTrending(
         licenseId
       );
       const hasDemoSite = Boolean(
-        repo.homepage && repo.homepage.startsWith("http")
+        repo.homepage &&
+          isSafeHttpsUrl(repo.homepage) &&
+          !/github\.com/i.test(repo.homepage)
       );
 
       const rankScore =
@@ -694,6 +728,10 @@ export async function fetchGitHubTrending(
       const trendingMatch = allTrendingStatsByUrl.get(lowerUrl);
       let githubStats: GitHubStats;
       let rawMetric: string;
+      const createdTs = repo.created_at ? Date.parse(repo.created_at) : NaN;
+      const ageDays = Number.isFinite(createdTs)
+        ? Math.max(1, (Date.now() - createdTs) / (86400 * 1000))
+        : 7;
 
       if (trendingMatch && trendingMatch.starsToday > 0) {
         const mergedTotal = Math.max(stars, trendingMatch.totalStars);
@@ -704,10 +742,6 @@ export async function fetchGitHubTrending(
         };
         rawMetric = `★ ${formatCompactCount(mergedTotal)} (+${formatDeltaCount(trendingMatch.starsToday)} 今日)`;
       } else {
-        const createdTs = repo.created_at ? Date.parse(repo.created_at) : NaN;
-        const ageDays = Number.isFinite(createdTs)
-          ? Math.max(1, (Date.now() - createdTs) / (86400 * 1000))
-          : 7;
         const starsPerDay = Math.max(1, Math.round(stars / ageDays));
         githubStats = {
           totalStars: stars,
@@ -731,6 +765,15 @@ export async function fetchGitHubTrending(
         rawMetric,
         publishedAt: repo.created_at || new Date().toISOString(),
         githubStats,
+        launchMeta: {
+          ...(hasDemoSite && repo.homepage
+            ? { productUrl: repo.homepage.trim() }
+            : {}),
+          discussionUrl: repoUrl,
+          ...(repo.created_at ? { launchedAt: repo.created_at } : {}),
+          ageDays: Math.max(1, Math.round(ageDays)),
+          ageKind: "repo_created",
+        },
         rankScore,
       });
     }

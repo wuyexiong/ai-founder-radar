@@ -1,7 +1,9 @@
 export type RadarEventName =
   | "signal_outbound_click"
+  | "signal_detail_click"
   | "signal_copy_brief"
   | "signal_bookmark"
+  | "signal_tag_filter"
   | "topic_hub_click"
   | "toolbox_click"
   | "newsletter_submit"

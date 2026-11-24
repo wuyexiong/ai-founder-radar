@@ -14,6 +14,7 @@ import {
 } from "@/lib/seo-taxonomy";
 import {
   getRadarPayload,
+  getSignalDetailPayload,
   getSourceHubPayload,
   getTopicHubPayload,
 } from "@/lib/signals-repo";
@@ -133,6 +134,31 @@ export async function GET(
           enPayload.items[0]?.titleOrig ||
           enCopy.description,
         items: enPayload.items,
+      })
+    );
+  }
+
+  // 5. /og/[locale]/signal/[id] -> Standalone Signal Tear Sheet
+  if (section === "signal") {
+    const detail = target ? await getSignalDetailPayload("en", target) : null;
+    if (!detail) {
+      return withOgCacheHeaders(
+        renderRadarOgImage({
+          kind: "signal",
+          locale,
+          headline: "Verified Micro-SaaS & Indie Hacker Commercial Signal",
+        })
+      );
+    }
+
+    return withOgCacheHeaders(
+      renderRadarOgImage({
+        kind: "signal",
+        locale,
+        dateLabel: detail.item.dateKey,
+        headline: detail.item.title || detail.item.titleOrig,
+        subheadline: detail.item.businessSignal || detail.item.whatItIs,
+        items: [detail.item],
       })
     );
   }

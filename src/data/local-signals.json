@@ -145,6 +145,10 @@
             "#個人開発",
             "#SaaS"
           ]
+        },
+        "_meta": {
+          "productUrl": "https://snapinvoice.app",
+          "discussionUrl": "https://www.producthunt.com/"
         }
       }
     },
@@ -267,6 +271,10 @@
             "#B2Bマネタイズ",
             "#高リテンション"
           ]
+        },
+        "_meta": {
+          "productUrl": "https://churnrescue.io",
+          "discussionUrl": "https://trustmrr.com/"
         }
       }
     },
@@ -328,6 +336,10 @@
             "#WebGPU",
             "#個人開発"
           ]
+        },
+        "_meta": {
+          "productUrl": "https://bgstudio.dev",
+          "discussionUrl": "https://news.ycombinator.com/show"
         }
       }
     },
@@ -389,6 +401,11 @@
             "#TikTok集客",
             "#個人開発"
           ]
+        },
+        "_meta": {
+          "releaseYear": 2026,
+          "ageMonths": 4,
+          "ageKind": "appstore_release"
         }
       }
     },
@@ -511,6 +528,12 @@
             "#AI開発",
             "#Webスクレイピング"
           ]
+        },
+        "_meta": {
+          "productUrl": "https://scrapemark.dev",
+          "discussionUrl": "https://github.com/trending",
+          "ageDays": 3,
+          "ageKind": "repo_created"
         }
       }
     },

@@ -86,6 +86,19 @@ export function buildSignalPermalink(params: {
   return `${base}/${params.locale}/daily/${params.dateKey}${query}#${encodeURIComponent(params.signalId)}`;
 }
 
+export function buildSignalDetailUrl(params: {
+  siteUrl: string;
+  locale: Locale;
+  signalId: string;
+  utmSource?: string;
+}): string {
+  const base = params.siteUrl.trim().replace(/\/$/, "");
+  const query = params.utmSource?.trim()
+    ? `?utm_source=${encodeURIComponent(params.utmSource.trim())}`
+    : "";
+  return `${base}/${params.locale}/signal/${encodeURIComponent(params.signalId)}${query}`;
+}
+
 export function buildTrackedOutboundUrl(
   raw: string | undefined | null,
   utm: {
@@ -138,4 +151,32 @@ export function formatSignalShareBrief(params: {
     `${params.playbookLabel.trim()} ${params.indieTakeaway.trim()}`,
     `${params.shareLinkLabel.trim()} ${params.permalink.trim()}`,
   ].join("\n");
+}
+
+const SYNTHETIC_ORIG_SUFFIX_RE =
+  /\s*(?:[—–-]|\|)\s*Verified Revenue\s+\$[\d,.]+[kKmMbB]?.*$/i;
+
+/**
+ * 解析卡片副标题（英文原名对照）：
+ * - 在英文路由 (`en`) 下主标题已为地道英文，自动隐藏第二行重复英文原题
+ * - 自动剥离采集器拼接的人工后缀（如 `— Verified Revenue $14k`），保持原名干净
+ */
+export function resolveOriginalSubtitle(params: {
+  locale: Locale;
+  title: string;
+  titleOrig?: string | null;
+}): string | null {
+  if (params.locale === "en") return null;
+  if (!params.titleOrig) return null;
+
+  const cleaned = params.titleOrig
+    .replace(SYNTHETIC_ORIG_SUFFIX_RE, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return null;
+  if (cleaned.toLowerCase() === params.title.trim().toLowerCase()) {
+    return null;
+  }
+  return cleaned;
 }

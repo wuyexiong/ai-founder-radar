@@ -13,6 +13,11 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
 import { SIGNALS_CORPUS_CACHE_TAG } from "@/lib/revalidate";
 import {
+  enforceStrictMetricType,
+  formatSignalAgeBadge,
+  resolveSignalLinks,
+} from "@/lib/signal-meta";
+import {
   getSourceCopy,
   getTopicCopy,
   isValidSourcePlatform,
@@ -163,6 +168,30 @@ function resolveLocalizedSignal(
     };
   }
 
+  const effectiveMetricsBadge = localized.metricsBadge || base.metricsBadge;
+  const strictMetricType = enforceStrictMetricType({
+    category: base.category,
+    proposedMetricType: base.metricType,
+    sourcePlatform: base.sourcePlatform,
+    metricsBadge: effectiveMetricsBadge,
+    businessSignal: base.businessSignal,
+    title: base.titleOrig || base.titleZh,
+  });
+  const links = resolveSignalLinks({
+    sourcePlatform: base.sourcePlatform,
+    sourceUrl: base.sourceUrl,
+    meta: translations._meta,
+  });
+  const ageBadge = formatSignalAgeBadge({
+    locale,
+    sourcePlatform: base.sourcePlatform,
+    dateKey: base.dateKey,
+    publishedAt: base.publishedAt,
+    rawSublabel: base.sourceSublabel,
+    metricsBadge: effectiveMetricsBadge,
+    meta: translations._meta,
+  });
+
   return {
     id: base.id,
     dateKey: base.dateKey,
@@ -173,8 +202,8 @@ function resolveLocalizedSignal(
     whatItIs: localized.whatItIs || base.whatItIs,
     businessSignal: localized.businessSignal || base.businessSignal,
     indieTakeaway: localized.indieTakeaway || base.indieTakeaway,
-    metricsBadge: localized.metricsBadge || base.metricsBadge,
-    metricType: base.metricType,
+    metricsBadge: effectiveMetricsBadge,
+    metricType: strictMetricType,
     tags:
       localized.tags && localized.tags.length > 0 ? localized.tags : base.tags,
     topics: matchedTopics,
@@ -187,6 +216,9 @@ function resolveLocalizedSignal(
       toTraditionalTw
     ),
     sourceUrl: base.sourceUrl,
+    ...(links.productUrl ? { productUrl: links.productUrl } : {}),
+    ...(links.discussionUrl ? { discussionUrl: links.discussionUrl } : {}),
+    ...(ageBadge ? { ageBadge } : {}),
     publishedAt: base.publishedAt,
   };
 }
@@ -993,7 +1025,8 @@ function matchesRawRecordSearch(
   ];
 
   const translations = rec.translations ?? {};
-  for (const block of Object.values(translations)) {
+  for (const locKey of ["en", "zh-TW", "ja"] as const) {
+    const block = translations[locKey];
     if (!block) continue;
     chunks.push(
       block.title,
@@ -1171,3 +1204,126 @@ export async function searchSignalsCorpus(
     ),
   };
 }
+
+const VALID_SIGNAL_ID_RE = /^sig-[a-zA-Z0-9_-]{2,80}$/;
+
+export function isValidSignalId(
+  value: string | undefined | null
+): value is string {
+  if (!value) return false;
+  return VALID_SIGNAL_ID_RE.test(value.trim());
+}
+
+export interface SignalDetailPayload {
+  locale: Locale;
+  storageMode: "supabase" | "local-fallback";
+  item: SignalItem;
+  relatedItems: SignalItem[];
+  tools: IndieToolItem[];
+  hubDirectory: HubDirectory;
+  latestDateKey: string;
+}
+
+export const getIndexableSignalEntries = cache(
+  async (
+    limit = 120
+  ): Promise<Array<{ id: string; dateKey: string; score: number }>> => {
+    const corpus = await getRecentRawSignals();
+    return corpus.records
+      .filter((rec) => isValidSignalId(rec.id) && (rec.isTopPick || rec.score >= 8.0))
+      .slice(0, Math.max(1, limit))
+      .map((rec) => ({
+        id: rec.id,
+        dateKey: rec.dateKey,
+        score: rec.score,
+      }));
+  }
+);
+
+export const getSignalDetailPayload = cache(
+  async (
+    locale: Locale,
+    rawId: string
+  ): Promise<SignalDetailPayload | null> => {
+    if (!isValidSignalId(rawId)) return null;
+    const targetId = rawId.trim();
+
+    const [dates, hubDirectory, corpus] = await Promise.all([
+      getAllAvailableDates(),
+      getSeoHubIndex(),
+      getRecentRawSignals(),
+    ]);
+
+    let targetRecord = corpus.records.find((rec) => rec.id === targetId);
+    let storageMode = corpus.storageMode;
+
+    // 仅当近期 360 条共享语料未命中且数据库记录已超出缓存窗口时，执行单点主键回查
+    if (
+      !targetRecord &&
+      corpus.storageMode === "supabase" &&
+      corpus.records.length >= RECENT_CORPUS_CACHE_LIMIT
+    ) {
+      const db = getDb();
+      if (db && hasDatabaseConfigured()) {
+        try {
+          const rows = await runWithCorpusCache(
+            `afr-signal-detail-v1:${targetId}`,
+            () =>
+              db
+                .select()
+                .from(signalItems)
+                .where(eq(signalItems.id, targetId))
+                .orderBy(desc(signalItems.score))
+                .limit(1)
+          );
+          if (rows[0]) {
+            targetRecord = mapDbRowToRawRecord(rows[0]);
+            storageMode = "supabase";
+          }
+        } catch {
+          // Fall back gracefully
+        }
+      }
+    }
+
+    if (!targetRecord) return null;
+
+    const targetTopics = new Set(targetRecord.topics);
+    const relatedRecords = corpus.records
+      .filter((rec) => rec.id !== targetRecord!.id)
+      .map((rec) => {
+        let sharedTopicCount = 0;
+        for (const t of rec.topics) {
+          if (targetTopics.has(t)) sharedTopicCount += 1;
+        }
+        const relevance =
+          sharedTopicCount * 4 +
+          (rec.category === targetRecord!.category ? 2 : 0) +
+          (rec.sourcePlatform === targetRecord!.sourcePlatform ? 1 : 0);
+        return { rec, relevance };
+      })
+      .sort((a, b) => {
+        if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+        if (b.rec.score !== a.rec.score) return b.rec.score - a.rec.score;
+        return b.rec.dateKey.localeCompare(a.rec.dateKey);
+      })
+      .slice(0, 6)
+      .map(({ rec }) => rec);
+
+    const dict = getDictionary(locale);
+    const latestDateKey =
+      dates[0] ?? corpus.records[0]?.dateKey ?? targetRecord.dateKey;
+
+    return {
+      locale,
+      storageMode,
+      item: resolveLocalizedSignal(targetRecord, locale),
+      relatedItems: relatedRecords.map((rec) =>
+        resolveLocalizedSignal(rec, locale)
+      ),
+      tools: dict.sidebar.tools,
+      hubDirectory,
+      latestDateKey,
+    };
+  }
+);

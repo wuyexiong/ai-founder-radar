@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import type { GitHubStats, RawFetchedItem } from "@/lib/collectors/sources";
+import {
+  enforceStrictMetricType,
+  formatSignalAgeBadge,
+  resolveSignalLinks,
+} from "@/lib/signal-meta";
 import { deriveTraditionalFields, toTraditionalTw } from "@/lib/zh-convert";
 import type {
   LocalizedSignalFields,
@@ -24,7 +29,7 @@ const MULTILINGUAL_SYSTEM_PROMPT = `You are a seasoned Indie Hacker and Micro-Sa
 Analyze the raw overseas product/revenue/listing/pain-point signal and output a single valid JSON object (NO markdown fences, NO thinking tags) with commercial intelligence in Simplified Chinese (zh), English (en), and Japanese (ja):
 {
   "category": "launch | revenue | pain_point | ai_trend (Acquire listings & MRR/ARR stories -> revenue; 'looking for / hate X' complaints -> pain_point)",
-  "metricType": "revenue | heat | pain (choose revenue whenever concrete $, MRR, ARR, or profit is present)",
+  "metricType": "revenue | heat | pain (STRICT: choose 'revenue' ONLY for verified/actual MRR, ARR, profit, acquisition valuation, or App Store Top Grossing rank; NEVER use 'revenue' for mere unit pricing like '$9/mo' or '$79 LTD' — use 'heat' instead)",
   "score": 8.6,
   "metricsBadge": "Concise highlight badge <=18 chars, e.g. ARR $73k, $31k MRR, ▲ 320 HN, 💬 38 Pain",
   "zh": {
@@ -559,7 +564,7 @@ export async function distillRawItem(
     raw.sourceSublabel.includes("痛点");
   const isRevenue =
     raw.sourcePlatform === "acquire" ||
-    /\$\d+|mrr|arr|revenue|profit|€|净利|年收|月收/i.test(
+    /\b(mrr|arr|ttm|revenue|profit|grossing)\b|\$[\d,.]+\s*[kKmMbB]\b|(?:净利|年收|月收|月入|年入)/i.test(
       `${raw.title} ${raw.summary} ${raw.rawMetric}`
     );
 
@@ -569,7 +574,6 @@ export async function distillRawItem(
     "pain_point",
     "ai_trend",
   ];
-  const validMetricTypes: MetricType[] = ["revenue", "heat", "pain"];
 
   const rawCategory = String(distilled?.category ?? "").trim();
   const normalizedCategory: SignalCategory = validCategories.includes(
@@ -595,16 +599,15 @@ export async function distillRawItem(
       ).trim();
 
   const rawMetricType = String(distilled?.metricType ?? "").trim();
-  const normalizedMetricType: MetricType = validMetricTypes.includes(
-    rawMetricType as MetricType
-  )
-    ? (rawMetricType as MetricType)
-    : normalizedCategory === "revenue" ||
-        /\$\d|mrr|arr|年收|月收|净利/i.test(`${sharedBadge} ${raw.rawMetric}`)
-      ? "revenue"
-      : normalizedCategory === "pain_point"
-        ? "pain"
-        : "heat";
+  const normalizedMetricType: MetricType = enforceStrictMetricType({
+    category: normalizedCategory,
+    proposedMetricType: rawMetricType,
+    sourcePlatform: raw.sourcePlatform,
+    metricsBadge: sharedBadge,
+    rawMetric: raw.rawMetric,
+    businessSignal: distilled?.zh?.businessSignal,
+    title: raw.title,
+  });
 
   const parsedScore = Number(distilled?.score);
   // 若 LLM 提炼失败，降级占位卡片严禁给高分或打上 Top Pick，避免污染生产库
@@ -671,6 +674,9 @@ export async function distillRawItem(
     "zh-TW": zhTwBlock,
     en: enBlock,
     ja: jaBlock,
+    ...(raw.launchMeta && Object.keys(raw.launchMeta).length > 0
+      ? { _meta: raw.launchMeta }
+      : {}),
   };
 
   const parsedPubTime = Date.parse(raw.publishedAt);
@@ -682,6 +688,24 @@ export async function distillRawItem(
     .update(raw.url)
     .digest("hex")
     .slice(0, 12);
+
+  const finalMetricsBadge = lockedGhBadges
+    ? lockedGhBadges.zh
+    : zhBlock.metricsBadge || sharedBadge;
+  const resolvedLinks = resolveSignalLinks({
+    sourcePlatform: raw.sourcePlatform,
+    sourceUrl: raw.url,
+    meta: raw.launchMeta,
+  });
+  const ageBadge = formatSignalAgeBadge({
+    locale: "zh",
+    sourcePlatform: raw.sourcePlatform,
+    dateKey,
+    publishedAt: safePublishedAt,
+    rawSublabel: raw.sourceSublabel,
+    metricsBadge: finalMetricsBadge,
+    meta: raw.launchMeta,
+  });
 
   return {
     usedLlm,
@@ -695,9 +719,7 @@ export async function distillRawItem(
       whatItIs: zhBlock.whatItIs,
       businessSignal: zhBlock.businessSignal,
       indieTakeaway: zhBlock.indieTakeaway,
-      metricsBadge: lockedGhBadges
-        ? lockedGhBadges.zh
-        : zhBlock.metricsBadge || sharedBadge,
+      metricsBadge: finalMetricsBadge,
       metricType: normalizedMetricType,
       tags: zhBlock.tags,
       translations,
@@ -706,6 +728,13 @@ export async function distillRawItem(
       sourcePlatform: raw.sourcePlatform,
       sourceSublabel: raw.sourceSublabel,
       sourceUrl: raw.url,
+      ...(resolvedLinks.productUrl
+        ? { productUrl: resolvedLinks.productUrl }
+        : {}),
+      ...(resolvedLinks.discussionUrl
+        ? { discussionUrl: resolvedLinks.discussionUrl }
+        : {}),
+      ...(ageBadge ? { ageBadge } : {}),
       publishedAt: safePublishedAt,
     },
   };

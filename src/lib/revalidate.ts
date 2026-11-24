@@ -53,13 +53,14 @@ export function collectRevalidatePaths(
 export function buildIndexNowUrlList(params: {
   siteUrl: string;
   dateKey: string;
-  items?: readonly TopicMatchCandidate[];
+  items?: ReadonlyArray<TopicMatchCandidate & { id?: string; score?: number }>;
 }): string[] {
   const base = params.siteUrl.trim().replace(/\/$/, "");
   const urls = new Set<string>();
 
   const matchedTopics = new Set<TopicSlug>();
   const matchedSources = new Set<SourcePlatform>();
+  const signalIds = new Set<string>();
 
   for (const item of params.items ?? []) {
     if (isValidSourcePlatform(item.sourcePlatform)) {
@@ -67,6 +68,14 @@ export function buildIndexNowUrlList(params: {
     }
     for (const slug of matchCanonicalTopics(item)) {
       matchedTopics.add(slug);
+    }
+    if (
+      item.id &&
+      /^sig-[a-zA-Z0-9_-]{2,80}$/.test(item.id) &&
+      (item.score === undefined || item.score >= 8.0) &&
+      signalIds.size < 25
+    ) {
+      signalIds.add(item.id);
     }
   }
 
@@ -80,6 +89,9 @@ export function buildIndexNowUrlList(params: {
     }
     for (const platform of matchedSources) {
       urls.add(`${base}/${loc}/source/${platform}`);
+    }
+    for (const sigId of signalIds) {
+      urls.add(`${base}/${loc}/signal/${encodeURIComponent(sigId)}`);
     }
   }
 
