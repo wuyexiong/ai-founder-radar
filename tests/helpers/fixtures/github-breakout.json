@@ -1,0 +1,48 @@
+{
+  "items": [
+    {
+      "full_name": "acme/agent-browser",
+      "html_url": "https://github.com/acme/agent-browser",
+      "description": "Same URL as Daily Trending — seenUrls prevents duplicate entry across pools.",
+      "stargazers_count": 4280,
+      "language": "TypeScript",
+      "homepage": "https://agentbrowser.dev",
+      "topics": ["ai", "agent", "browser"],
+      "license": { "spdx_id": "MIT" },
+      "created_at": "2026-11-20T00:00:00Z"
+    },
+    {
+      "full_name": "indie/pdf-ocr-gpl",
+      "html_url": "https://github.com/indie/pdf-ocr-gpl",
+      "description": "Local OCR and markdown extraction workflow engine for enterprise PDF documents",
+      "stargazers_count": 330,
+      "language": "Python",
+      "homepage": "",
+      "topics": ["ocr", "pdf", "workflow"],
+      "license": { "spdx_id": "GPL-3.0" },
+      "created_at": "2026-11-21T00:00:00Z"
+    },
+    {
+      "full_name": "indie/mcp-billing-gateway",
+      "html_url": "https://github.com/indie/mcp-billing-gateway",
+      "description": "Open-source Stripe billing and usage metering gateway for MCP AI agents",
+      "stargazers_count": 300,
+      "language": "TypeScript",
+      "homepage": "https://mcpbill.dev",
+      "topics": ["mcp", "ai", "billing", "saas"],
+      "license": { "spdx_id": "MIT" },
+      "created_at": "2026-11-22T00:00:00Z"
+    },
+    {
+      "full_name": "gamer/minecraft-cheat-mod",
+      "html_url": "https://github.com/gamer/minecraft-cheat-mod",
+      "description": "AI agent automation mod with minecraft cheat and hack features",
+      "stargazers_count": 900,
+      "language": "Java",
+      "homepage": "",
+      "topics": ["ai"],
+      "license": { "spdx_id": "MIT" },
+      "created_at": "2026-11-22T00:00:00Z"
+    }
+  ]
+}

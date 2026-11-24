@@ -1,0 +1,152 @@
+{
+  "us6007": {
+    "feed": {
+      "entry": [
+        {
+          "im:name": { "label": "ChatGPT" },
+          "im:artist": { "label": "OpenAI" },
+          "summary": { "label": "Official AI assistant." },
+          "id": { "label": "https://apps.apple.com/us/app/chatgpt/id6448311069?uo=2", "attributes": { "im:bundleId": "com.openai.chat" } },
+          "im:releaseDate": { "label": "2023-05-18T00:00:00-07:00" }
+        },
+        {
+          "im:name": { "label": "Workspace Docs" },
+          "im:artist": { "label": "Google LLC" },
+          "summary": { "label": "Enterprise docs." },
+          "id": { "label": "https://apps.apple.com/us/app/workspace-docs/id100001?uo=2", "attributes": { "im:bundleId": "com.google.docs" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "RoadCam Viewer" },
+          "im:artist": { "label": "AutoGear Studio" },
+          "summary": { "label": "Connect to your 4K WiFi dashcam hardware over Bluetooth." },
+          "id": { "label": "https://apps.apple.com/us/app/roadcam-viewer/id100002?uo=2", "attributes": { "im:bundleId": "com.autogear.dashcam" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "VoiceMemo AI Note" },
+          "im:artist": { "label": "SoloCraft Labs" },
+          "summary": { "label": "Instant voice note transcription with weekly and annual subscription plans." },
+          "id": { "label": "https://apps.apple.com/us/app/voicememo-ai/id200001?uo=2", "attributes": { "im:bundleId": "com.solocraft.voicememo" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "QR Fast Scanner Pro" },
+          "im:artist": { "label": "IndieScan Studio" },
+          "summary": { "label": "Scan QR codes with free trial and annual subscription." },
+          "id": { "label": "https://apps.apple.com/us/app/qr-fast-scanner/id200002?uo=2", "attributes": { "im:bundleId": "com.indiescan.qr1" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "Barcode & QR Reader Plus" },
+          "im:artist": { "label": "PixelUtility LLC" },
+          "summary": { "label": "Second QR reader that should hit category cap of 1." },
+          "id": { "label": "https://apps.apple.com/us/app/barcode-qr-plus/id200003?uo=2", "attributes": { "im:bundleId": "com.pixelutility.qr2" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "PDF Signer & Scanner" },
+          "im:artist": { "label": "Paperless Indie" },
+          "summary": { "label": "Sign PDF contracts on iPhone with lifetime or annual unlock." },
+          "id": { "label": "https://apps.apple.com/us/app/pdf-signer-indie/id200004?uo=2", "attributes": { "im:bundleId": "com.paperless.pdf" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        }
+      ]
+    }
+  },
+  "us6002": {
+    "feed": {
+      "entry": [
+        {
+          "im:name": { "label": "Smart Storage Cleaner" },
+          "im:artist": { "label": "CleanWave Apps" },
+          "summary": { "label": "AI duplicate photo cleaner with weekly subscription." },
+          "id": { "label": "https://apps.apple.com/us/app/smart-storage-cleaner/id200005?uo=2", "attributes": { "im:bundleId": "com.cleanwave.c1" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "Phone Cleaner Master" },
+          "im:artist": { "label": "NeatBytes Studio" },
+          "summary": { "label": "Fast photo cleaner with free trial." },
+          "id": { "label": "https://apps.apple.com/us/app/phone-cleaner-master/id200006?uo=2", "attributes": { "im:bundleId": "com.neatbytes.c2" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "Third Cleaner Overflow" },
+          "im:artist": { "label": "ExtraClean Dev" },
+          "summary": { "label": "Third cleaner should be blocked by cleaner cap of 2." },
+          "id": { "label": "https://apps.apple.com/us/app/third-cleaner/id200007?uo=2", "attributes": { "im:bundleId": "com.extraclean.c3" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "HabitGrid Widget" },
+          "im:artist": { "label": "TinyLoop Co" },
+          "summary": { "label": "Home screen habit tracker widget with annual subscription." },
+          "id": { "label": "https://apps.apple.com/us/app/habitgrid-widget/id200008?uo=2", "attributes": { "im:bundleId": "com.tinyloop.habit" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        }
+      ]
+    }
+  },
+  "jp6007": {
+    "feed": {
+      "entry": [
+        {
+          "im:name": { "label": "VoiceMemo AI Note" },
+          "im:artist": { "label": "SoloCraft Labs" },
+          "summary": { "label": "Same bundleId as US #1 indie app — must be deduplicated across regions." },
+          "id": { "label": "https://apps.apple.com/jp/app/voicememo-ai/id200001?uo=2", "attributes": { "im:bundleId": "com.solocraft.voicememo" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "AI議事録ノート" },
+          "im:artist": { "label": "TokyoIndie KK" },
+          "summary": { "label": "会議の文字起こしと要約を自動化する月額サブスクアプリ。" },
+          "id": { "label": "https://apps.apple.com/jp/app/ai-minutes-jp/id300001?uo=2", "attributes": { "im:bundleId": "jp.tokyoindie.minutes" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "領収書スキャナーAI" },
+          "im:artist": { "label": "KojinTax Studio" },
+          "summary": { "label": "個人事業主向けの確定申告レシート読取・年額プラン対応。" },
+          "id": { "label": "https://apps.apple.com/jp/app/receipt-ai-jp/id300002?uo=2", "attributes": { "im:bundleId": "jp.kojintax.receipt" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "英語発音コーチAI" },
+          "im:artist": { "label": "SpeakCraft JP" },
+          "summary": { "label": "AI音声添削でビジネス英会話を練習できる無料トライアル付きアプリ。" },
+          "id": { "label": "https://apps.apple.com/jp/app/speakcraft-jp/id300003?uo=2", "attributes": { "im:bundleId": "jp.speakcraft.coach" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        }
+      ]
+    }
+  },
+  "jp6002": {
+    "feed": {
+      "entry": [
+        {
+          "im:name": { "label": "Indie VPN Shield" },
+          "im:artist": { "label": "SafeTunnel Studio" },
+          "summary": { "label": "Fast privacy VPN with annual subscription." },
+          "id": { "label": "https://apps.apple.com/jp/app/indie-vpn-1/id300004?uo=2", "attributes": { "im:bundleId": "jp.safetunnel.vpn1" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "Safari 広告ブロック Pro" },
+          "im:artist": { "label": "WebClean JP" },
+          "summary": { "label": "モバイル広告ブロック拡張機能（月額・年額サブスク）。" },
+          "id": { "label": "https://apps.apple.com/jp/app/adblock-jp-2/id300005?uo=2", "attributes": { "im:bundleId": "jp.webclean.vpn2" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        },
+        {
+          "im:name": { "label": "Extra Proxy VPN 3" },
+          "im:artist": { "label": "OverflowNet" },
+          "summary": { "label": "Third VPN/Proxy/Adblock item should hit VPN cap of 2." },
+          "id": { "label": "https://apps.apple.com/jp/app/extra-vpn-3/id300006?uo=2", "attributes": { "im:bundleId": "jp.overflow.vpn3" } },
+          "im:releaseDate": { "label": "{{RECENT_DATE}}" }
+        }
+      ]
+    }
+  }
+}

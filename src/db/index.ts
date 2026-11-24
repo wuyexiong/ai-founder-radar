@@ -2,7 +2,14 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-let cachedDb: ReturnType<typeof drizzle<typeof schema>> | null = null;
+type DbInstance = ReturnType<typeof drizzle<typeof schema>>;
+
+let cachedDb: DbInstance | null = null;
+let testDbOverride: DbInstance | null = null;
+
+export function setDbForTests(mockDb: unknown | null): void {
+  testDbOverride = (mockDb as DbInstance | null) ?? null;
+}
 
 export function normalizeDatabaseUrl(rawUrl: string): string {
   const unbracketed = rawUrl
@@ -19,13 +26,13 @@ export function normalizeDatabaseUrl(rawUrl: string): string {
   }
 }
 
-function shouldRequireTls(cleanUrl: string): boolean {
+export function shouldRequireTls(cleanUrl: string): boolean {
   try {
     const parsed = new URL(cleanUrl);
     if (parsed.searchParams.has("sslmode")) {
       return false;
     }
-    const host = parsed.hostname.toLowerCase();
+    const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
     return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
   } catch {
     return false;
@@ -33,11 +40,15 @@ function shouldRequireTls(cleanUrl: string): boolean {
 }
 
 export function hasDatabaseConfigured(): boolean {
+  if (testDbOverride) return true;
   const url = process.env.DATABASE_URL?.trim();
   return Boolean(url && url.startsWith("postgres"));
 }
 
 export function getDb() {
+  if (testDbOverride) {
+    return testDbOverride;
+  }
   if (!hasDatabaseConfigured()) {
     return null;
   }

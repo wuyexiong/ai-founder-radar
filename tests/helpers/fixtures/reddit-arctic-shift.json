@@ -1,0 +1,80 @@
+{
+  "SaaS": {
+    "data": [
+      {
+        "id": "r1",
+        "title": "[ Removed by Reddit ]",
+        "selftext": "Removed body content that is longer than sixty characters",
+        "permalink": "/r/SaaS/comments/r1/removed_title/",
+        "score": 50,
+        "num_comments": 20,
+        "created_utc": 1795480000,
+        "removed_by_category": null
+      },
+      {
+        "id": "r2",
+        "title": "Removed by mod post",
+        "selftext": "Valid looking body text over sixty characters but removed_by_category is set.",
+        "permalink": "/r/SaaS/comments/r2/mod_removed/",
+        "score": 40,
+        "num_comments": 10,
+        "created_utc": 1795480100,
+        "removed_by_category": "moderator"
+      },
+      {
+        "id": "r3",
+        "title": "Deleted body post",
+        "selftext": "[removed]",
+        "permalink": "/r/SaaS/comments/r3/body_removed/",
+        "score": 80,
+        "num_comments": 15,
+        "created_utc": 1795480200,
+        "removed_by_category": null
+      },
+      {
+        "id": "r4",
+        "title": "Free Discord promo",
+        "selftext": "Hey founders, dm me for free growth templates and join my discord server right now!",
+        "permalink": "/r/SaaS/comments/r4/spam_discord/",
+        "score": 90,
+        "num_comments": 30,
+        "created_utc": 1795480300,
+        "removed_by_category": null
+      },
+      {
+        "id": "r5",
+        "title": "How we crossed $9.2k MRR with Stripe annual pricing &amp; reduced churn",
+        "selftext": "Switching from $9/mo hobby plans to $49/mo B2B team seats doubled our net revenue retention within 60 days.",
+        "permalink": "/r/SaaS/comments/r5/crossed_9k_mrr/",
+        "score": 38,
+        "num_comments": 19,
+        "created_utc": 1795481000,
+        "removed_by_category": null
+      }
+    ]
+  },
+  "SomebodyMakeThis": {
+    "data": [
+      {
+        "id": "p1",
+        "title": "General shower thought",
+        "selftext": "Just wondering why nobody makes better desk lamps with warm amber LEDs for late night reading.",
+        "permalink": "/r/SomebodyMakeThis/comments/p1/desk_lamp/",
+        "score": 14,
+        "num_comments": 4,
+        "created_utc": 1795481200,
+        "removed_by_category": null
+      },
+      {
+        "id": "p2",
+        "title": "Tired of manual spreadsheet VAT reconciliation — would happily pay for an automated tool",
+        "selftext": "Every month I spend 6 hours matching Stripe payouts against EU VAT spreadsheets. Existing enterprise software is too expensive.",
+        "permalink": "/r/SomebodyMakeThis/comments/p2/vat_tool_pain/",
+        "score": 12,
+        "num_comments": 6,
+        "created_utc": 1795481500,
+        "removed_by_category": null
+      }
+    ]
+  }
+}

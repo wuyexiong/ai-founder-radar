@@ -78,7 +78,17 @@ Output ONLY a valid JSON object (NO markdown fences, NO thinking tags):
   }
 }`;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let retryDelayScale = 1;
+
+export function setDistillerTimingScaleForTests(scale: number): void {
+  retryDelayScale = scale;
+  cachedRapidMlx = undefined;
+}
+
+const sleep = (ms: number) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, Math.max(0, Math.round(ms * retryDelayScale)))
+  );
 
 function sanitizeUntrustedForPrompt(raw: string, maxLen: number): string {
   return raw

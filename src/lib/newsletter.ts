@@ -287,7 +287,7 @@ const DIGEST_LABELS: Record<
   },
 };
 
-function buildDigestContent(params: {
+export function buildDigestContent(params: {
   locale: Locale;
   dateKey: string;
   totalCount: number;
@@ -387,8 +387,10 @@ export async function sendDailyNewsletterDigests(params: {
   allItems: SignalItem[];
   summaryNote: string;
   summaryTranslations?: SummaryTranslations;
+  rateLimitDelayMs?: number;
 }): Promise<void> {
   const { db, dateKey, allItems, summaryNote, summaryTranslations } = params;
+  const rateLimitDelayMs = params.rateLimitDelayMs ?? 550;
 
   if (!hasResendConfigured()) {
     console.log(
@@ -453,8 +455,8 @@ export async function sendDailyNewsletterDigests(params: {
     }
 
     // 遵守 Resend 免费套餐 2 req/s 速率限制
-    if (i < pending.length - 1) {
-      await sleep(550);
+    if (i < pending.length - 1 && rateLimitDelayMs > 0) {
+      await sleep(rateLimitDelayMs);
     }
   }
 

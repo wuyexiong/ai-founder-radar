@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**\" tests/*.test.ts",
     "radar:sync": "node --import tsx --use-env-proxy scripts/sync-radar.ts",
     "radar:backfill": "node --import tsx --use-env-proxy scripts/sync-radar.ts --backfill-only",
     "db:generate": "drizzle-kit generate",

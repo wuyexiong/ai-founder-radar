@@ -1,0 +1,64 @@
+{
+  "hits": [
+    {
+      "objectID": "41001",
+      "author": "alice_founder",
+      "title": "Show HN: MailPulse – B2B SaaS Stripe billing & webhook monitor",
+      "story_text": "",
+      "url": "https://mailpulse.example.com",
+      "points": 92,
+      "num_comments": 28,
+      "children": [9001, 9002],
+      "created_at": "2026-11-24T01:00:00.000Z",
+      "created_at_i": 1795482000
+    },
+    {
+      "objectID": "41002",
+      "author": "bob_hacker",
+      "title": "Show HN: Retro 80s Gameboy emulator shader written in Rust",
+      "story_text": "A weekend retro gaming arcade toy project.",
+      "url": "https://github.com/bob/gb-shader",
+      "points": 210,
+      "num_comments": 55,
+      "children": [],
+      "created_at": "2026-11-24T01:30:00.000Z",
+      "created_at_i": 1795483800
+    },
+    {
+      "objectID": "41003",
+      "author": "carol_saas",
+      "title": "Show HN: ChessClub CRM – B2B SaaS with Stripe billing at $4.2k MRR",
+      "story_text": "We built automated tournament invoicing, Stripe subscriptions, and student CRM for 85 paying chess academies.",
+      "url": "https://chessclubcrm.example.com",
+      "points": 54,
+      "num_comments": 19,
+      "children": [],
+      "created_at": "2026-11-24T02:00:00.000Z",
+      "created_at_i": 1795485600
+    },
+    {
+      "objectID": "41004",
+      "author": "ssrf_tester",
+      "title": "Show HN: Internal Admin Panel SaaS",
+      "story_text": "Internal endpoint",
+      "url": "http://127.0.0.1:8080/admin",
+      "points": 99,
+      "num_comments": 10,
+      "children": [],
+      "created_at": "2026-11-24T02:10:00.000Z",
+      "created_at_i": 1795486200
+    },
+    {
+      "objectID": "41005",
+      "author": "dup_author",
+      "title": "Show HN: Yesterday SaaS Already Synced",
+      "story_text": "Already in historical database.",
+      "url": "https://already-seen.example.com",
+      "points": 150,
+      "num_comments": 40,
+      "children": [],
+      "created_at": "2026-11-23T02:10:00.000Z",
+      "created_at_i": 1795399800
+    }
+  ]
+}

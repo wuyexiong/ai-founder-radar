@@ -225,7 +225,7 @@ export async function fetchTrustMrr(
                 .trim();
 
               const mrrMatch = cleanBody.match(/MRR\s*(\$[\d,.]+[kKmM]?)/i)?.[1];
-              if (mrrMatch && !item.rawMetric.includes("MRR")) {
+              if (mrrMatch && !/\bMRR\s*\$/i.test(item.rawMetric)) {
                 item.rawMetric = `MRR ${mrrMatch} · ${item.rawMetric}`
                   .slice(0, 26)
                   .replace(/[\s·]+$/, "");

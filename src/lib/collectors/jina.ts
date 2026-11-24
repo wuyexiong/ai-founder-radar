@@ -5,16 +5,34 @@ const USER_AGENT =
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export interface JinaTimingOverrides {
+  retryBackoffMs?: number;
+  errorBackoffMs?: number;
+  anonSpacingMs?: number;
+  authSpacingMs?: number;
+}
+
 let activeCount = 0;
 let lastLaunchAt = 0;
+let timingOverrides: JinaTimingOverrides | null = null;
 const waitQueue: Array<() => void> = [];
+
+export function setJinaTimingForTests(
+  overrides: JinaTimingOverrides | null
+): void {
+  timingOverrides = overrides;
+  lastLaunchAt = 0;
+}
 
 function getJinaConcurrency(): number {
   return process.env.JINA_API_KEY?.trim() ? 5 : 2;
 }
 
 function getJinaMinSpacingMs(): number {
-  return process.env.JINA_API_KEY?.trim() ? 120 : 500;
+  if (process.env.JINA_API_KEY?.trim()) {
+    return timingOverrides?.authSpacingMs ?? 120;
+  }
+  return timingOverrides?.anonSpacingMs ?? 500;
 }
 
 async function acquireJinaSlot(): Promise<void> {
@@ -69,7 +87,7 @@ export async function fetchViaJinaMarkdown(
 
       if ((res.status === 429 || res.status === 503) && attempt === 0) {
         await res.body?.cancel().catch(() => undefined);
-        await sleep(3000);
+        await sleep(timingOverrides?.retryBackoffMs ?? 3000);
         continue;
       }
       return res;
@@ -77,7 +95,7 @@ export async function fetchViaJinaMarkdown(
       clearTimeout(timer);
       releaseJinaSlot();
       if (attempt === 0) {
-        await sleep(1500);
+        await sleep(timingOverrides?.errorBackoffMs ?? 1500);
         continue;
       }
       return null;
