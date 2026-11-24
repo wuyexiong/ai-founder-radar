@@ -47,8 +47,12 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // 2. 兼容无语言前缀的 /daily/YYYY-MM-DD
-  if (firstSegment === "daily") {
+  // 2. 兼容无语言前缀的 /daily/YYYY-MM-DD、/topic/[tag]、/source/[platform]
+  if (
+    firstSegment === "daily" ||
+    firstSegment === "topic" ||
+    firstSegment === "source"
+  ) {
     const preferred = detectPreferredLocale(
       request.headers.get("accept-language"),
       request.cookies.get(LOCALE_COOKIE)?.value

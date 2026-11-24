@@ -48,6 +48,7 @@ export interface SignalItem {
   sourceSublabel: string;
   sourceUrl: string;
   publishedAt: string;
+  topics?: string[];
   translations?: SignalTranslations;
 }
 

@@ -41,13 +41,20 @@ export async function POST(request: NextRequest) {
   for (const p of paths) {
     revalidatePath(p);
   }
-  // 同时失效所有历史归档页的路由模板，确保旧日期页的 availableDates 箭头立即解锁
+  // 同时失效所有历史归档页与程序化 SEO 专题模板，确保新信号与日期箭头立即生效
   revalidatePath("/[locale]/daily/[date]", "page");
+  revalidatePath("/[locale]/topic/[tag]", "page");
+  revalidatePath("/[locale]/source/[platform]", "page");
 
   return NextResponse.json(
     {
       ok: true,
-      revalidated: [...paths, "/[locale]/daily/[date]"],
+      revalidated: [
+        ...paths,
+        "/[locale]/daily/[date]",
+        "/[locale]/topic/[tag]",
+        "/[locale]/source/[platform]",
+      ],
     },
     { status: 200, headers: { "Cache-Control": "no-store" } }
   );

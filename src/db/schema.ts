@@ -41,6 +41,7 @@ export const signalItems = pgTable(
     uniqueIndex("signal_items_source_url_idx").on(table.sourceUrl),
     index("signal_items_date_key_idx").on(table.dateKey),
     index("signal_items_category_idx").on(table.category),
+    index("signal_items_source_platform_idx").on(table.sourcePlatform),
   ]
 ).enableRLS();
 

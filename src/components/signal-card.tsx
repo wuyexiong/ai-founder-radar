@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, Calendar, ExternalLink } from "lucide-react";
+import { ArrowUpRight, Bookmark, Calendar, ExternalLink } from "lucide-react";
 import { type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
+import {
+  getTopicCopy,
+  isValidTopicSlug,
+  resolveTopicSlugFromTag,
+  type TopicSlug,
+} from "@/lib/seo-taxonomy";
 import { cn, formatDeterministicClock, toSafeHttpUrl } from "@/lib/utils";
 import type {
   SignalCategory,
@@ -46,7 +52,9 @@ interface SignalCardProps {
   isBookmarked: boolean;
   isHighlighted?: boolean;
   activeTag: string | null;
+  activeTopicSlug?: string | null;
   archivedDateHref?: string;
+  hubDateHref?: string;
   onToggleBookmark: (item: SignalItem) => void;
 }
 
@@ -57,7 +65,9 @@ export function SignalCard({
   isBookmarked,
   isHighlighted = false,
   activeTag,
+  activeTopicSlug,
   archivedDateHref,
+  hubDateHref,
   onToggleBookmark,
 }: SignalCardProps) {
   const platform = PLATFORM_META[item.sourcePlatform] ?? {
@@ -84,6 +94,21 @@ export function SignalCard({
     item.titleOrig.trim().toLowerCase() !== item.title.trim().toLowerCase();
   const safeSourceUrl = toSafeHttpUrl(item.sourceUrl);
 
+  // Track which canonical topics are already linked via hashtags so we can surface up to 1 extra topic hub pill
+  const linkedViaHashtag = new Set<TopicSlug>();
+  const tagEntries = item.tags.map((tag) => {
+    const slug = resolveTopicSlugFromTag(tag);
+    if (slug) linkedViaHashtag.add(slug);
+    return { tag, slug };
+  });
+
+  const extraTopicPills = (item.topics ?? [])
+    .filter(
+      (slug): slug is TopicSlug =>
+        isValidTopicSlug(slug) && !linkedViaHashtag.has(slug)
+    )
+    .slice(0, 2);
+
   return (
     <article
       id={item.id}
@@ -97,10 +122,13 @@ export function SignalCard({
       {/* 第 1 层：顶栏元数据 */}
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+          <Link
+            href={`/${locale}/source/${item.sourcePlatform}`}
+            className="inline-flex items-center gap-1.5 font-medium text-slate-700 transition-colors hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
+          >
             <span className={cn("h-2 w-2 rounded-full", platform.dotClass)} />
             {platform.label}
-          </span>
+          </Link>
           {displaySublabel && (
             <span className="text-slate-400 dark:text-slate-500">
               · {displaySublabel}
@@ -109,6 +137,15 @@ export function SignalCard({
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
             {categoryLabel}
           </span>
+          {hubDateHref && !archivedDateHref && (
+            <Link
+              href={hubDateHref}
+              className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+            >
+              <Calendar className="h-3 w-3" />
+              {item.dateKey}
+            </Link>
+          )}
           {archivedDateHref && (
             <Link
               href={archivedDateHref}
@@ -199,11 +236,29 @@ export function SignalCard({
         </div>
       </div>
 
-      {/* 第 4 层：底栏静态语义标签与操作行 */}
+      {/* 第 4 层：底栏语义标签、常青专题内链与操作行 */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          {item.tags.map((tag) => {
-            const selected = activeTag === tag;
+          {tagEntries.map(({ tag, slug }) => {
+            const selected =
+              activeTag === tag || Boolean(slug && activeTopicSlug === slug);
+            if (slug) {
+              return (
+                <Link
+                  key={tag}
+                  href={`/${locale}/topic/${slug}`}
+                  className={cn(
+                    "inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+                    selected
+                      ? "border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                      : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+                  )}
+                >
+                  <span>{tag}</span>
+                  <ArrowUpRight className="h-3 w-3 opacity-60" />
+                </Link>
+              );
+            }
             return (
               <span
                 key={tag}
@@ -216,6 +271,26 @@ export function SignalCard({
               >
                 {tag}
               </span>
+            );
+          })}
+
+          {extraTopicPills.map((slug) => {
+            const isCurrent = activeTopicSlug === slug;
+            const topicShort = getTopicCopy(slug, locale).shortLabel;
+            return (
+              <Link
+                key={slug}
+                href={`/${locale}/topic/${slug}`}
+                className={cn(
+                  "inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors",
+                  isCurrent
+                    ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                    : "border-slate-200/80 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-blue-500/50 dark:hover:text-blue-300"
+                )}
+              >
+                <span>{topicShort}</span>
+                <ArrowUpRight className="h-3 w-3 opacity-60" />
+              </Link>
             );
           })}
         </div>

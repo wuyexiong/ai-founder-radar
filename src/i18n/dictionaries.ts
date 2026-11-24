@@ -87,6 +87,21 @@ export interface Dictionary {
     retry: string;
     backHome: string;
   };
+  hub: {
+    breadcrumbHome: string;
+    breadcrumbTopics: string;
+    breadcrumbSources: string;
+    backToLatest: string;
+    statsSignals: (count: number) => string;
+    statsRevenue: (count: number) => string;
+    statsPainPoints: (count: number) => string;
+    statsAvgScore: (avg: string) => string;
+    updatedAt: (date: string) => string;
+    top3HubTitle: string;
+    directoryTopicsTitle: string;
+    directorySourcesTitle: string;
+    emptyHub: string;
+  };
 }
 
 const EN_DICT: Dictionary = {
@@ -229,6 +244,22 @@ const EN_DICT: Dictionary = {
     retry: "Try Again",
     backHome: "Back to Home",
   },
+  hub: {
+    breadcrumbHome: "Home",
+    breadcrumbTopics: "Topics",
+    breadcrumbSources: "Sources",
+    backToLatest: "← Latest Daily Briefing",
+    statsSignals: (count) => `${count} Curated Signals`,
+    statsRevenue: (count) => `${count} Revenue & MRR Cases`,
+    statsPainPoints: (count) => `${count} Buyer Pain Points`,
+    statsAvgScore: (avg) => `Avg Score ${avg}`,
+    updatedAt: (date) => `Updated ${date}`,
+    top3HubTitle: "🏆 Top 3 Highest-Signal Cases",
+    directoryTopicsTitle: "Explore Profitable Niche Topics",
+    directorySourcesTitle: "Browse by Signal Source",
+    emptyHub:
+      "No signals curated for this hub yet. New global signals sync daily — explore active hubs below.",
+  },
 };
 
 const ZH_DICT: Dictionary = {
@@ -369,6 +400,22 @@ const ZH_DICT: Dictionary = {
     desc: "暂时无法读取商业信号数据，请点击下方按钮重试。",
     retry: "重新加载",
     backHome: "返回首页",
+  },
+  hub: {
+    breadcrumbHome: "首页",
+    breadcrumbTopics: "赛道专题",
+    breadcrumbSources: "一手信源",
+    backToLatest: "← 返回最新日报",
+    statsSignals: (count) => `累计 ${count} 条商业信号`,
+    statsRevenue: (count) => `${count} 个真实变现案例`,
+    statsPainPoints: (count) => `${count} 条高赞痛点`,
+    statsAvgScore: (avg) => `平均评分 ${avg}`,
+    updatedAt: (date) => `最近更新 ${date}`,
+    top3HubTitle: "🏆 本专题最高分商机 Top 3",
+    directoryTopicsTitle: "热门出海赛道专题库",
+    directorySourcesTitle: "按海外一手信源检索",
+    emptyHub:
+      "该专题暂未收录信号卡片，系统每日早间自动同步全球新案例，可先浏览下方热门专题。",
   },
 };
 
@@ -511,6 +558,22 @@ const ZH_TW_DICT: Dictionary = {
     retry: "重新載入",
     backHome: "返回首頁",
   },
+  hub: {
+    breadcrumbHome: "首頁",
+    breadcrumbTopics: "賽道專題",
+    breadcrumbSources: "一手來源",
+    backToLatest: "← 返回最新日報",
+    statsSignals: (count) => `累計 ${count} 則商業信號`,
+    statsRevenue: (count) => `${count} 個真實變現案例`,
+    statsPainPoints: (count) => `${count} 則高讚痛點`,
+    statsAvgScore: (avg) => `平均評分 ${avg}`,
+    updatedAt: (date) => `最近更新 ${date}`,
+    top3HubTitle: "🏆 本專題最高分商機 Top 3",
+    directoryTopicsTitle: "熱門出海賽道專題庫",
+    directorySourcesTitle: "按海外一手來源檢索",
+    emptyHub:
+      "此專題目前尚未收錄信號卡片，系統每日自動同步全球新案例，可先瀏覽下方熱門專題。",
+  },
 };
 
 const JA_DICT: Dictionary = {
@@ -652,6 +715,22 @@ const JA_DICT: Dictionary = {
     desc: "シグナルデータの取得中に問題が発生しました。しばらくしてから再度お試しください。",
     retry: "再試行する",
     backHome: "トップへ戻る",
+  },
+  hub: {
+    breadcrumbHome: "ホーム",
+    breadcrumbTopics: "領域トピック",
+    breadcrumbSources: "情報ソース",
+    backToLatest: "← 最新デイリーへ戻る",
+    statsSignals: (count) => `厳選シグナル ${count} 件`,
+    statsRevenue: (count) => `収益・MRR事例 ${count} 件`,
+    statsPainPoints: (count) => `課題・ニーズ ${count} 件`,
+    statsAvgScore: (avg) => `平均スコア ${avg}`,
+    updatedAt: (date) => `最終更新 ${date}`,
+    top3HubTitle: "🏆 この特集の最高スコア Top 3",
+    directoryTopicsTitle: "注目ニッチ領域・テーマ別特集",
+    directorySourcesTitle: "海外一次情報ソース別アーカイブ",
+    emptyHub:
+      "このテーマのシグナルは現在収集中です。毎日自動更新される下の注目トピックをご覧ください。",
   },
 };
 

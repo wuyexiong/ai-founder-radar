@@ -9,6 +9,14 @@ import {
   generateStaticParams as generateDailyStaticParams,
 } from "../src/app/(localized)/[locale]/daily/[date]/page";
 import { generateMetadata as generateHomeMetadata } from "../src/app/(localized)/[locale]/page";
+import {
+  generateMetadata as generateSourceMetadata,
+  generateStaticParams as generateSourceStaticParams,
+} from "../src/app/(localized)/[locale]/source/[platform]/page";
+import {
+  generateMetadata as generateTopicMetadata,
+  generateStaticParams as generateTopicStaticParams,
+} from "../src/app/(localized)/[locale]/topic/[tag]/page";
 import manifest from "../src/app/manifest";
 import robots from "../src/app/robots";
 import sitemap from "../src/app/sitemap";
@@ -19,8 +27,25 @@ import {
   shouldRequireTls,
 } from "../src/db";
 import { HREFLANG_MAP, LOCALE_COOKIE, LOCALES } from "../src/i18n/config";
-import { buildRadarJsonLd, buildRadarMetadata } from "../src/lib/seo";
-import { getAllAvailableDates, getRadarPayload } from "../src/lib/signals-repo";
+import {
+  buildHubJsonLd,
+  buildRadarJsonLd,
+  buildRadarMetadata,
+} from "../src/lib/seo";
+import {
+  getSourceCopy,
+  getTopicCopy,
+  resolveTopicSlugFromTag,
+  SOURCE_PLATFORMS,
+  TOPIC_SLUGS,
+} from "../src/lib/seo-taxonomy";
+import {
+  getAllAvailableDates,
+  getRadarPayload,
+  getSeoHubIndex,
+  getSourceHubPayload,
+  getTopicHubPayload,
+} from "../src/lib/signals-repo";
 import { middleware } from "../src/middleware";
 import {
   CLEARED_ENV_KEYS,
@@ -203,10 +228,43 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
       );
 
       const dates = await getAllAvailableDates();
+      const hubIndex = await getSeoHubIndex();
       const mapEntries = await sitemap();
       assert.equal(
         mapEntries.length,
-        LOCALES.length + dates.length * LOCALES.length
+        LOCALES.length *
+          (1 +
+            dates.length +
+            hubIndex.topics.length +
+            hubIndex.sources.length)
+      );
+
+      // Populated programmatic SEO hubs are included in sitemap
+      assert.ok(
+        mapEntries.some(
+          (e) =>
+            e.url === "https://radar.aibuildon.com/en/topic/chrome-extension"
+        )
+      );
+      assert.ok(
+        mapEntries.some(
+          (e) => e.url === "https://radar.aibuildon.com/zh/topic/shopify"
+        )
+      );
+      assert.ok(
+        mapEntries.some(
+          (e) => e.url === "https://radar.aibuildon.com/en/source/trustmrr"
+        )
+      );
+      assert.ok(
+        mapEntries.some(
+          (e) => e.url === "https://radar.aibuildon.com/ja/source/reddit"
+        )
+      );
+      // 0-item sources in local-fallback (e.g. acquire) are excluded from sitemap to prevent thin content
+      assert.equal(
+        mapEntries.some((e) => e.url.endsWith("/source/acquire")),
+        false
       );
 
       for (const entry of mapEntries) {
@@ -271,7 +329,7 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
       );
     });
 
-    it("redirects unprefixed /daily/2026-11-23 to 307 /<locale>/daily/2026-11-23", () => {
+    it("redirects unprefixed /daily/2026-11-23, /topic/*, and /source/* to 307 /<locale>/...", () => {
       const req = new NextRequest(
         "https://radar.aibuildon.com/daily/2026-11-23",
         {
@@ -285,6 +343,32 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
         "https://radar.aibuildon.com/ja/daily/2026-11-23"
       );
       assert.equal(res.headers.get("vary"), "Accept-Language, Cookie");
+
+      const topicReq = new NextRequest(
+        "https://radar.aibuildon.com/topic/chrome-extension",
+        {
+          headers: { "accept-language": "zh-CN,zh;q=0.9" },
+        }
+      );
+      const topicRes = middleware(topicReq);
+      assert.equal(topicRes.status, 307);
+      assert.equal(
+        topicRes.headers.get("location"),
+        "https://radar.aibuildon.com/zh/topic/chrome-extension"
+      );
+
+      const sourceReq = new NextRequest(
+        "https://radar.aibuildon.com/source/trustmrr",
+        {
+          headers: { "accept-language": "en-US,en;q=0.9" },
+        }
+      );
+      const sourceRes = middleware(sourceReq);
+      assert.equal(sourceRes.status, 307);
+      assert.equal(
+        sourceRes.headers.get("location"),
+        "https://radar.aibuildon.com/en/source/trustmrr"
+      );
     });
 
     it("permanently redirects /zh?date=2026-11-23 to 308 /zh/daily/2026-11-23", () => {
@@ -332,6 +416,8 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
         "/sitemap.xml",
         "/en",
         "/zh/daily/2026-11-23",
+        "/en/topic/chrome-extension",
+        "/zh/source/reddit",
       ]) {
         const res = middleware(
           new NextRequest(`https://radar.aibuildon.com${path}`)
@@ -427,6 +513,139 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
       assert.ok(ciYml.includes("npm run typecheck"));
       assert.ok(ciYml.includes("npm run test:coverage"));
       assert.ok(ciYml.includes("npm run build"));
+    });
+  });
+
+  describe("6. Programmatic SEO Topic & Source Hubs (/topic/[tag] & /source/[platform])", () => {
+    it("maintains symmetric cross-locale topic classification, zero CJK leaks in EN copy, cross-day aggregation, and noindex guardrails on empty hubs", async () => {
+      const cjkRe = /[\u4e00-\u9fff\u3040-\u30ff]/;
+
+      for (const slug of TOPIC_SLUGS) {
+        const enCopy = getTopicCopy(slug, "en");
+        assert.equal(
+          cjkRe.test(
+            `${enCopy.label} ${enCopy.seoTitle} ${enCopy.h1} ${enCopy.description}`
+          ),
+          false,
+          `CJK character leaked into English topic copy for ${slug}`
+        );
+      }
+
+      for (const platform of SOURCE_PLATFORMS) {
+        const enCopy = getSourceCopy(platform, "en");
+        assert.equal(
+          cjkRe.test(
+            `${enCopy.label} ${enCopy.seoTitle} ${enCopy.h1} ${enCopy.description}`
+          ),
+          false,
+          `CJK character leaked into English source copy for ${platform}`
+        );
+      }
+
+      assert.equal(resolveTopicSlugFromTag("#Chrome插件"), "chrome-extension");
+      assert.equal(
+        resolveTopicSlugFromTag("#ChromeExtension"),
+        "chrome-extension"
+      );
+      assert.equal(resolveTopicSlugFromTag("#Shopify生态"), "shopify");
+      assert.equal(resolveTopicSlugFromTag("#随机未知标签XYZ"), null);
+
+      const topicStatic = generateTopicStaticParams();
+      assert.equal(topicStatic.length, LOCALES.length * TOPIC_SLUGS.length);
+      const sourceStatic = generateSourceStaticParams();
+      assert.equal(
+        sourceStatic.length,
+        LOCALES.length * SOURCE_PLATFORMS.length
+      );
+
+      // Cross-locale item parity on topic hubs
+      const enChrome = await getTopicHubPayload("en", "chrome-extension");
+      const zhChrome = await getTopicHubPayload("zh", "chrome-extension");
+      const jaChrome = await getTopicHubPayload("ja", "chrome-extension");
+      assert.ok(enChrome.items.length >= 1);
+      assert.deepEqual(
+        enChrome.items.map((i) => i.id),
+        zhChrome.items.map((i) => i.id)
+      );
+      assert.deepEqual(
+        enChrome.items.map((i) => i.id),
+        jaChrome.items.map((i) => i.id)
+      );
+
+      // Cross-day aggregation on Reddit source hub (combines 2026-11-23 and 2026-11-22 items)
+      const redditHub = await getSourceHubPayload("en", "reddit");
+      const distinctDates = new Set(redditHub.items.map((i) => i.dateKey));
+      assert.ok(
+        distinctDates.size >= 2,
+        "Source hub must aggregate signals across multiple archive dates"
+      );
+
+      // Active topic metadata: index=true + symmetric hreflang
+      const topicMeta = await generateTopicMetadata({
+        params: Promise.resolve({ locale: "en", tag: "chrome-extension" }),
+      });
+      assert.equal(
+        topicMeta.alternates?.canonical,
+        "https://radar.aibuildon.com/en/topic/chrome-extension"
+      );
+      assert.deepEqual(topicMeta.robots, { index: true, follow: true });
+      const topicLangs = topicMeta.alternates?.languages as Record<
+        string,
+        string
+      >;
+      assert.equal(
+        topicLangs["zh-CN"],
+        "https://radar.aibuildon.com/zh/topic/chrome-extension"
+      );
+      assert.equal(
+        topicLangs["x-default"],
+        "https://radar.aibuildon.com/en/topic/chrome-extension"
+      );
+
+      // Empty source hub in local-fallback (acquire): index=false (noindex) to prevent soft-404 / thin content
+      const emptySourceMeta = await generateSourceMetadata({
+        params: Promise.resolve({ locale: "en", platform: "acquire" }),
+      });
+      assert.deepEqual(emptySourceMeta.robots, { index: false, follow: true });
+
+      // Invalid topic/source returns {}
+      assert.deepEqual(
+        await generateTopicMetadata({
+          params: Promise.resolve({ locale: "en", tag: "non-existent-tag" }),
+        }),
+        {}
+      );
+      assert.deepEqual(
+        await generateSourceMetadata({
+          params: Promise.resolve({
+            locale: "en",
+            platform: "myspace",
+          }),
+        }),
+        {}
+      );
+
+      // Hub JSON-LD includes BreadcrumbList + CollectionPage and sanitizes javascript: URLs
+      const hubLd = buildHubJsonLd({
+        locale: "zh",
+        kind: "topic",
+        slug: "chrome-extension",
+        seoTitle: zhChrome.hub!.seoTitle,
+        h1: zhChrome.hub!.h1,
+        description: zhChrome.hub!.description,
+        breadcrumbLabel: zhChrome.hub!.label,
+        latestDateKey: zhChrome.hub!.latestDateKey,
+        items: [
+          {
+            ...zhChrome.items[0],
+            sourceUrl: "javascript:alert(1)",
+          },
+        ],
+      });
+      assert.equal(hubLd["@graph"].length, 3);
+      assert.equal(hubLd["@graph"][1]["@type"], "BreadcrumbList");
+      assert.equal(hubLd["@graph"][2]["@type"], "CollectionPage");
+      assert.equal(JSON.stringify(hubLd).includes("javascript:"), false);
     });
   });
 });

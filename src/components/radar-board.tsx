@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  Compass,
   ExternalLink,
   Flame,
   Globe,
@@ -35,6 +36,7 @@ import {
   type Locale,
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { getTopicCopy } from "@/lib/seo-taxonomy";
 import type { RadarPagePayload } from "@/lib/signals-repo";
 import { cn, toSafeHttpUrl } from "@/lib/utils";
 import type {
@@ -91,10 +93,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     items,
     tools,
     storageMode,
+    hub,
+    hubDirectory,
   } = payload;
 
   const dict = useMemo(() => getDictionary(locale), [locale]);
   const latestDate = availableDates[0];
+  const isHubPage = Boolean(hub);
 
   const tabs: Array<{ id: TabFilter; label: string; icon: React.ReactNode }> =
     useMemo(
@@ -127,13 +132,18 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         {
           id: "ai_trend",
           label: dict.tabs.ai_trend,
-          icon: <Terminal className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />,
+          icon: (
+            <Terminal className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
+          ),
         },
       ],
       [dict]
     );
 
-  const [activeTab, setActiveTab] = useState<TabFilter>("top");
+  // 专题聚合页默认展开 "all"（确保首屏 SSR HTML 100% 输出该专题全部卡片供 Google 抓取）
+  const [activeTab, setActiveTab] = useState<TabFilter>(
+    isHubPage ? "all" : "top"
+  );
   const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
     null
   );
@@ -147,6 +157,19 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const [isDark, setIsDark] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const routeKey = hub ? `${hub.kind}:${hub.slug}` : `daily:${activeDate}`;
+  const prevRouteKeyRef = useRef(routeKey);
+
+  // 客户端跨专题/日期软路由切换时重置筛选状态
+  useEffect(() => {
+    if (prevRouteKeyRef.current !== routeKey) {
+      prevRouteKeyRef.current = routeKey;
+      setActiveTab(hub ? "all" : "top");
+      setActivePlatform(null);
+      setActiveTag(null);
+      setSearchQuery("");
+    }
+  }, [routeKey, hub]);
 
   // 初始化主题与跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
   useEffect(() => {
@@ -419,7 +442,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       (i) => i.id === targetItem.id
     );
     if (!isCurrentlyVisible) {
-      setActiveTab(targetItem.isTopPick ? "top" : "all");
+      setActiveTab(isHubPage ? "all" : targetItem.isTopPick ? "top" : "all");
       setActivePlatform(null);
       setActiveTag(null);
       setSearchQuery("");
@@ -449,6 +472,16 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     setSearchQuery("");
   };
 
+  const buildSwitcherHref = (targetLocale: Locale) => {
+    if (hub) {
+      return `/${targetLocale}/${hub.kind}/${hub.slug}`;
+    }
+    return buildLocalePath(targetLocale, activeDate, latestDate);
+  };
+
+  const activeTopics = hubDirectory?.topics ?? [];
+  const activeSources = hubDirectory?.sources ?? [];
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 transition-colors dark:bg-[#090D16] dark:text-slate-100">
       {/* Sticky 顶栏 (56px) */}
@@ -472,48 +505,57 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             </div>
           </Link>
 
-          {/* 中间：独立静态归档路由日期切换器 */}
-          <nav
-            aria-label="Daily archive navigation"
-            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
-          >
-            {olderDate ? (
-              <Link
-                href={buildLocalePath(locale, olderDate, latestDate)}
-                title={dict.header.viewDate(olderDate)}
-                className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Link>
-            ) : (
-              <span className="p-1 text-slate-300 dark:text-slate-700">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </span>
-            )}
-
-            <span className="px-1.5 font-mono font-semibold text-slate-800 sm:px-2 dark:text-slate-200">
-              {activeDate}
-              {activeDate === latestDate && (
-                <span className="ml-1.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
-                  {dict.header.latestBadge}
+          {/* 中间：日报归档日期切换器 或 专题页返回最新日报入口 */}
+          {isHubPage ? (
+            <Link
+              href={`/${locale}`}
+              className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-blue-600 sm:inline-flex dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+            >
+              {dict.hub.backToLatest}
+            </Link>
+          ) : (
+            <nav
+              aria-label="Daily archive navigation"
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs font-medium tabular-nums dark:border-slate-800 dark:bg-slate-900"
+            >
+              {olderDate ? (
+                <Link
+                  href={buildLocalePath(locale, olderDate, latestDate)}
+                  title={dict.header.viewDate(olderDate)}
+                  className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Link>
+              ) : (
+                <span className="p-1 text-slate-300 dark:text-slate-700">
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </span>
               )}
-            </span>
 
-            {newerDate ? (
-              <Link
-                href={buildLocalePath(locale, newerDate, latestDate)}
-                title={dict.header.viewDate(newerDate)}
-                className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            ) : (
-              <span className="p-1 text-slate-300 dark:text-slate-700">
-                <ChevronRight className="h-3.5 w-3.5" />
+              <span className="px-1.5 font-mono font-semibold text-slate-800 sm:px-2 dark:text-slate-200">
+                {activeDate}
+                {activeDate === latestDate && (
+                  <span className="ml-1.5 hidden rounded bg-emerald-500/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+                    {dict.header.latestBadge}
+                  </span>
+                )}
               </span>
-            )}
-          </nav>
+
+              {newerDate ? (
+                <Link
+                  href={buildLocalePath(locale, newerDate, latestDate)}
+                  title={dict.header.viewDate(newerDate)}
+                  className="rounded p-1 text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+              ) : (
+                <span className="p-1 text-slate-300 dark:text-slate-700">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              )}
+            </nav>
+          )}
 
           {/* 右侧：搜索框 + 四语种切换胶囊 + 收藏夹 + 主题切换 */}
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -538,7 +580,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               )}
             </div>
 
-            {/* 四语种直达胶囊切换器（爬虫友好 <a href> + Cookie 记忆） */}
+            {/* 四语种直达胶囊切换器（保持当前日报/专题路由对称跳转） */}
             <div
               role="navigation"
               aria-label={dict.header.switchLang}
@@ -551,7 +593,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 return (
                   <Link
                     key={loc}
-                    href={buildLocalePath(loc, activeDate, latestDate)}
+                    href={buildSwitcherHref(loc)}
                     onClick={() => persistLocaleCookie(loc)}
                     title={info.native}
                     className={cn(
@@ -570,7 +612,9 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             <button
               type="button"
               onClick={() =>
-                setActiveTab((prev) => (prev === "saved" ? "top" : "saved"))
+                setActiveTab((prev) =>
+                  prev === "saved" ? (isHubPage ? "all" : "top") : "saved"
+                )
               }
               className={cn(
                 "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium tabular-nums transition-colors sm:px-2.5 cursor-pointer",
@@ -600,25 +644,55 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
         </div>
       </header>
 
-      {/* 紧凑单行情报概览条 */}
+      {/* 紧凑单行情报概览条 / 专题面包屑导航条 */}
       <div className="border-b border-slate-200/80 bg-white/60 dark:border-slate-800/70 dark:bg-[#111827]/50">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs sm:px-6">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 dark:text-slate-300">
-            <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {dict.overview.scannedSummary(
-                overview.scannedCount,
-                items.length
-              )}
-            </span>
-            <span className="hidden text-slate-300 sm:inline dark:text-slate-700">
-              |
-            </span>
-            <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 tabular-nums">
-              <Clock className="h-3.5 w-3.5" />
-              {dict.overview.estReadTime(overview.estimatedReadMinutes)}
-            </span>
-          </div>
+          {hub ? (
+            <nav
+              aria-label="Breadcrumb"
+              className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400"
+            >
+              <Link
+                href={`/${locale}`}
+                className="font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
+              >
+                {dict.hub.breadcrumbHome}
+              </Link>
+              <span>/</span>
+              <span>
+                {hub.kind === "topic"
+                  ? dict.hub.breadcrumbTopics
+                  : dict.hub.breadcrumbSources}
+              </span>
+              <span>/</span>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {hub.label}
+              </span>
+              <span className="hidden text-slate-300 sm:inline dark:text-slate-700">
+                |
+              </span>
+              <span className="hidden font-mono text-[11px] sm:inline">
+                {dict.hub.updatedAt(hub.latestDateKey)}
+              </span>
+            </nav>
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white tabular-nums">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                {dict.overview.scannedSummary(
+                  overview.scannedCount,
+                  items.length
+                )}
+              </span>
+              <span className="hidden text-slate-300 sm:inline dark:text-slate-700">
+                |
+              </span>
+              <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 tabular-nums">
+                <Clock className="h-3.5 w-3.5" />
+                {dict.overview.estReadTime(overview.estimatedReadMinutes)}
+              </span>
+            </div>
+          )}
 
           {(storageMode === "supabase" ||
             process.env.NODE_ENV !== "production") && (
@@ -642,16 +716,63 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
       {/* 主体双栏容器 */}
       <main className="mx-auto max-w-[1240px] px-4 py-5 sm:px-6">
-        <h1 className="sr-only">{dict.overview.headingSrOnly(activeDate)}</h1>
+        {hub ? (
+          <section className="mb-5 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs dark:border-slate-800 dark:bg-[#111827]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-3xl">
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
+                  {hub.h1}
+                </h1>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {hub.description}
+                </p>
+              </div>
+              <Link
+                href={`/${locale}`}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                {dict.hub.backToLatest}
+              </Link>
+            </div>
 
-        {/* 当日主编一句话风向总结 */}
-        {overview.summaryNote && (
-          <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/60 px-4 py-2.5 text-[13.5px] text-slate-700 dark:border-blue-500/20 dark:bg-blue-950/25 dark:text-slate-300">
-            <span className="font-semibold text-blue-700 dark:text-blue-400">
-              {dict.overview.editorialPrefix}
-            </span>
-            {overview.summaryNote}
-          </div>
+            <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs font-medium tabular-nums">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                {dict.hub.statsSignals(hub.totalSignals)}
+              </span>
+              {hub.revenueCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  {dict.hub.statsRevenue(hub.revenueCount)}
+                </span>
+              )}
+              {hub.painPointCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                  {dict.hub.statsPainPoints(hub.painPointCount)}
+                </span>
+              )}
+              {hub.avgScore > 0 && (
+                <span className="inline-flex items-center rounded-lg border border-slate-200 px-2.5 py-1 font-mono text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                  {dict.hub.statsAvgScore(hub.avgScore.toFixed(1))}
+                </span>
+              )}
+            </div>
+          </section>
+        ) : (
+          <>
+            <h1 className="sr-only">
+              {dict.overview.headingSrOnly(activeDate)}
+            </h1>
+
+            {/* 当日主编一句话风向总结 */}
+            {overview.summaryNote && (
+              <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/60 px-4 py-2.5 text-[13.5px] text-slate-700 dark:border-blue-500/20 dark:bg-blue-950/25 dark:text-slate-300">
+                <span className="font-semibold text-blue-700 dark:text-blue-400">
+                  {dict.overview.editorialPrefix}
+                </span>
+                {overview.summaryNote}
+              </div>
+            )}
+          </>
         )}
 
         {/* 移动端搜索框 */}
@@ -737,153 +858,175 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               })}
             </div>
 
-            {/* 二级紧凑联动筛选台 */}
-            <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                    {dict.filters.sourcesLabel}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActivePlatform(null)}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                      activePlatform === null
-                        ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                    )}
-                  >
-                    {dict.filters.allSources}
-                    <span className="font-mono text-[10px] opacity-75">
-                      {tabScopedItems.length}
-                    </span>
-                  </button>
-
-                  {platformOptions.map(
-                    ({ platform, tabCount, totalCount }) => {
-                      const meta = PLATFORM_META[platform] ?? {
-                        label: platform,
-                        dotClass: "bg-slate-400",
-                      };
-                      const selected = activePlatform === platform;
-                      const isUnscopedCategory =
-                        activeTab === "top" || activeTab === "all";
-                      const displayCount = isUnscopedCategory
-                        ? totalCount
-                        : tabCount > 0
-                          ? tabCount
-                          : totalCount;
-                      const dimmed =
-                        !isUnscopedCategory && tabCount === 0 && !selected;
-
-                      return (
-                        <button
-                          key={platform}
-                          type="button"
-                          onClick={() => handleSelectPlatform(platform)}
-                          title={
-                            !isUnscopedCategory && tabCount === 0
-                              ? dict.filters.crossTabHint(totalCount)
-                              : dict.filters.filterPlatform(meta.label)
-                          }
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                            selected
-                              ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
-                              : dimmed
-                                ? "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full",
-                              selected ? "bg-white" : meta.dotClass
-                            )}
-                          />
-                          <span>{meta.label}</span>
-                          <span className="font-mono text-[10px] opacity-70">
-                            {displayCount}
-                          </span>
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
-
-                {hasSubFilters && (
-                  <button
-                    type="button"
-                    onClick={resetSubFilters}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    {dict.filters.clearFilters}
-                  </button>
-                )}
-              </div>
-
-              {/* 切口标签行 */}
-              {tagCounts.length > 0 && (
-                <div className="mt-2.5 border-t border-slate-100 pt-2.5 dark:border-slate-800/80">
-                  <div
-                    className={cn(
-                      "flex flex-wrap items-center gap-1.5",
-                      tagsExpanded &&
-                        "thin-scrollbar max-h-44 overflow-y-auto pr-1"
-                    )}
-                  >
-                    <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
-                      {dict.filters.anglesLabel}
-                    </span>
-                    {displayedTags.map(([tag, count]) => {
-                      const selected = activeTag === tag;
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => handleSelectTag(tag)}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer tabular-nums",
-                            selected
-                              ? "bg-blue-600 text-white"
-                              : "bg-slate-100/90 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-700"
-                          )}
-                        >
-                          <span>{tag}</span>
-                          <span className="font-mono text-[10px] opacity-70">
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-
-                    {tagCounts.length > COLLAPSED_TAG_LIMIT && (
+            {/* 二级紧凑联动筛选台（在空专题页或单一信源页自动适配） */}
+            {(platformOptions.length > 1 || tagCounts.length > 0) && (
+              <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]">
+                {platformOptions.length > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                        {dict.filters.sourcesLabel}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => setTagsExpanded((prev) => !prev)}
-                        className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200 cursor-pointer tabular-nums"
-                      >
-                        {tagsExpanded ? (
-                          <>
-                            {dict.filters.collapseAngles}
-                            <ChevronUp className="h-3 w-3" />
-                          </>
-                        ) : (
-                          <>
-                            {dict.filters.expandAngles(
-                              tagCounts.length - COLLAPSED_TAG_LIMIT
-                            )}
-                            <ChevronDown className="h-3 w-3" />
-                          </>
+                        onClick={() => setActivePlatform(null)}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                          activePlatform === null
+                            ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                         )}
+                      >
+                        {dict.filters.allSources}
+                        <span className="font-mono text-[10px] opacity-75">
+                          {tabScopedItems.length}
+                        </span>
+                      </button>
+
+                      {platformOptions.map(
+                        ({ platform, tabCount, totalCount }) => {
+                          const meta = PLATFORM_META[platform] ?? {
+                            label: platform,
+                            dotClass: "bg-slate-400",
+                          };
+                          const selected = activePlatform === platform;
+                          const isUnscopedCategory =
+                            activeTab === "top" || activeTab === "all";
+                          const displayCount = isUnscopedCategory
+                            ? totalCount
+                            : tabCount > 0
+                              ? tabCount
+                              : totalCount;
+                          const dimmed =
+                            !isUnscopedCategory && tabCount === 0 && !selected;
+
+                          return (
+                            <button
+                              key={platform}
+                              type="button"
+                              onClick={() => handleSelectPlatform(platform)}
+                              title={
+                                !isUnscopedCategory && tabCount === 0
+                                  ? dict.filters.crossTabHint(totalCount)
+                                  : dict.filters.filterPlatform(meta.label)
+                              }
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                                selected
+                                  ? "bg-slate-900 text-white dark:bg-blue-600 dark:text-white"
+                                  : dimmed
+                                    ? "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/40 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "h-1.5 w-1.5 rounded-full",
+                                  selected ? "bg-white" : meta.dotClass
+                                )}
+                              />
+                              <span>{meta.label}</span>
+                              <span className="font-mono text-[10px] opacity-70">
+                                {displayCount}
+                              </span>
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    {hasSubFilters && (
+                      <button
+                        type="button"
+                        onClick={resetSubFilters}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        {dict.filters.clearFilters}
                       </button>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+
+                {/* 切口标签行 */}
+                {tagCounts.length > 0 && (
+                  <div
+                    className={cn(
+                      platformOptions.length > 1 &&
+                        "mt-2.5 border-t border-slate-100 pt-2.5 dark:border-slate-800/80"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex flex-wrap items-center justify-between gap-1.5",
+                        tagsExpanded &&
+                          "thin-scrollbar max-h-44 overflow-y-auto pr-1"
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-400 dark:text-slate-500">
+                          {dict.filters.anglesLabel}
+                        </span>
+                        {displayedTags.map(([tag, count]) => {
+                          const selected = activeTag === tag;
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => handleSelectTag(tag)}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer tabular-nums",
+                                selected
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-slate-100/90 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-700"
+                              )}
+                            >
+                              <span>{tag}</span>
+                              <span className="font-mono text-[10px] opacity-70">
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+
+                        {tagCounts.length > COLLAPSED_TAG_LIMIT && (
+                          <button
+                            type="button"
+                            onClick={() => setTagsExpanded((prev) => !prev)}
+                            className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200 cursor-pointer tabular-nums"
+                          >
+                            {tagsExpanded ? (
+                              <>
+                                {dict.filters.collapseAngles}
+                                <ChevronUp className="h-3 w-3" />
+                              </>
+                            ) : (
+                              <>
+                                {dict.filters.expandAngles(
+                                  tagCounts.length - COLLAPSED_TAG_LIMIT
+                                )}
+                                <ChevronDown className="h-3 w-3" />
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {platformOptions.length <= 1 && hasSubFilters && (
+                        <button
+                          type="button"
+                          onClick={resetSubFilters}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          {dict.filters.clearFilters}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 信号卡片列表 */}
             {filteredItems.length > 0 ? (
@@ -897,6 +1040,12 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     isBookmarked={Boolean(savedSnapshots[item.id])}
                     isHighlighted={highlightedId === item.id}
                     activeTag={activeTag}
+                    activeTopicSlug={hub?.kind === "topic" ? hub.slug : null}
+                    hubDateHref={
+                      isHubPage
+                        ? buildLocalePath(locale, item.dateKey, latestDate)
+                        : undefined
+                    }
                     archivedDateHref={
                       activeTab === "saved" && item.dateKey !== activeDate
                         ? buildLocalePath(locale, item.dateKey, latestDate)
@@ -911,20 +1060,31 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                   {activeTab === "saved"
                     ? dict.filters.emptySaved
-                    : dict.filters.emptyFiltered}
+                    : isHubPage && items.length === 0
+                      ? dict.hub.emptyHub
+                      : dict.filters.emptyFiltered}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("all");
-                    setActivePlatform(null);
-                    setActiveTag(null);
-                    setSearchQuery("");
-                  }}
-                  className="mt-3 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white dark:bg-blue-600 cursor-pointer"
-                >
-                  {dict.filters.resetAll}
-                </button>
+                {isHubPage && items.length === 0 ? (
+                  <Link
+                    href={`/${locale}`}
+                    className="mt-3 inline-block rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white dark:bg-blue-600"
+                  >
+                    {dict.hub.backToLatest}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("all");
+                      setActivePlatform(null);
+                      setActiveTag(null);
+                      setSearchQuery("");
+                    }}
+                    className="mt-3 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white dark:bg-blue-600 cursor-pointer"
+                  >
+                    {dict.filters.resetAll}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -932,65 +1092,69 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           {/* 右侧粘性辅助边栏 (4 cols) */}
           <aside className="lg:col-span-4">
             <div className="thin-scrollbar space-y-3.5 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-88px)] lg:overflow-y-auto lg:pr-0.5">
-              {/* 模块 1：当日高分 Top 3 速览 */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
-                <h2 className="mb-2.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  <span>{dict.sidebar.top3Title}</span>
-                  <span className="font-mono text-[11px] font-normal">
-                    {dict.sidebar.top3Locate}
-                  </span>
-                </h2>
-                <div className="space-y-1.5">
-                  {topThreeItems.map((item, idx) => {
-                    const pMeta = PLATFORM_META[item.sourcePlatform];
-                    const isFocused = highlightedId === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleFocusTopItem(item)}
-                        className={cn(
-                          "group flex w-full items-start justify-between gap-2.5 rounded-lg p-1.5 text-left transition-colors cursor-pointer",
-                          isFocused
-                            ? "bg-blue-50/90 dark:bg-blue-950/40"
-                            : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                        )}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            0{idx + 1}
-                          </span>
-                          <div>
-                            <span className="line-clamp-2 text-xs font-medium leading-snug text-slate-800 group-hover:text-blue-600 dark:text-slate-200 dark:group-hover:text-blue-400">
-                              {item.title}
+              {/* 模块 1：高分 Top 3 速览 */}
+              {topThreeItems.length > 0 && (
+                <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
+                  <h2 className="mb-2.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <span>
+                      {isHubPage ? dict.hub.top3HubTitle : dict.sidebar.top3Title}
+                    </span>
+                    <span className="font-mono text-[11px] font-normal">
+                      {dict.sidebar.top3Locate}
+                    </span>
+                  </h2>
+                  <div className="space-y-1.5">
+                    {topThreeItems.map((item, idx) => {
+                      const pMeta = PLATFORM_META[item.sourcePlatform];
+                      const isFocused = highlightedId === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleFocusTopItem(item)}
+                          className={cn(
+                            "group flex w-full items-start justify-between gap-2.5 rounded-lg p-1.5 text-left transition-colors cursor-pointer",
+                            isFocused
+                              ? "bg-blue-50/90 dark:bg-blue-950/40"
+                              : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                          )}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 font-mono text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              0{idx + 1}
                             </span>
-                            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
-                              {pMeta && (
-                                <span className="inline-flex items-center gap-1">
-                                  <span
-                                    className={cn(
-                                      "h-1.5 w-1.5 rounded-full",
-                                      pMeta.dotClass
-                                    )}
-                                  />
-                                  {pMeta.label}
-                                </span>
-                              )}
-                              <span>·</span>
-                              <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                                {item.metricsBadge}
+                            <div>
+                              <span className="line-clamp-2 text-xs font-medium leading-snug text-slate-800 group-hover:text-blue-600 dark:text-slate-200 dark:group-hover:text-blue-400">
+                                {item.title}
                               </span>
+                              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                                {pMeta && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span
+                                      className={cn(
+                                        "h-1.5 w-1.5 rounded-full",
+                                        pMeta.dotClass
+                                      )}
+                                    />
+                                    {pMeta.label}
+                                  </span>
+                                )}
+                                <span>·</span>
+                                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                                  {item.metricsBadge}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <span className="shrink-0 font-mono text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
-                          {item.score.toFixed(1)}
-                        </span>
-                      </button>
-                    );
-                  })}
+                          <span className="shrink-0 font-mono text-xs font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+                            {item.score.toFixed(1)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* 模块 2：出海建站零成本工具箱 */}
               <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
@@ -1037,8 +1201,107 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           </aside>
         </div>
 
+        {/* 程序化 SEO 全站内链导航矩阵（常青赛道专题 + 一手信源专题） */}
+        {(activeTopics.length > 0 || activeSources.length > 0) && (
+          <section
+            aria-label="Programmatic SEO Topic and Source Hubs"
+            className="mt-12 rounded-2xl border border-slate-200/90 bg-white p-5 dark:border-slate-800 dark:bg-[#111827]"
+          >
+            {activeTopics.length > 0 && (
+              <div>
+                <h2 className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <Compass className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  {dict.hub.directoryTopicsTitle}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {activeTopics.map(({ slug, count }) => {
+                    const topicCopy = getTopicCopy(slug, locale);
+                    const isCurrent =
+                      hub?.kind === "topic" && hub.slug === slug;
+                    return (
+                      <Link
+                        key={slug}
+                        href={`/${locale}/topic/${slug}`}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors tabular-nums",
+                          isCurrent
+                            ? "border-blue-600 bg-blue-600 text-white"
+                            : "border-slate-200 bg-slate-50/80 text-slate-700 hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-blue-500/40 dark:hover:text-blue-300"
+                        )}
+                      >
+                        <span>{topicCopy.label}</span>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.2 font-mono text-[10.5px]",
+                            isCurrent
+                              ? "bg-white/20 text-white"
+                              : "bg-white text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {activeSources.length > 0 && (
+              <div
+                className={cn(
+                  activeTopics.length > 0 &&
+                    "mt-4 border-t border-slate-100 pt-4 dark:border-slate-800/80"
+                )}
+              >
+                <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {dict.hub.directorySourcesTitle}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {activeSources.map(({ platform, count }) => {
+                    const meta = PLATFORM_META[platform] ?? {
+                      label: platform,
+                      dotClass: "bg-slate-400",
+                    };
+                    const isCurrent =
+                      hub?.kind === "source" && hub.slug === platform;
+                    return (
+                      <Link
+                        key={platform}
+                        href={`/${locale}/source/${platform}`}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors tabular-nums",
+                          isCurrent
+                            ? "border-slate-900 bg-slate-900 text-white dark:border-blue-500 dark:bg-blue-600"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:border-slate-700"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            isCurrent ? "bg-white" : meta.dotClass
+                          )}
+                        />
+                        <span>{meta.label}</span>
+                        <span
+                          className={cn(
+                            "font-mono text-[10.5px]",
+                            isCurrent ? "text-white/80" : "text-slate-400"
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* 页脚 */}
-        <footer className="mt-14 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
+        <footer className="mt-10 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
           {dict.footer.copyright}
         </footer>
       </main>
@@ -1082,7 +1345,9 @@ function NewsletterSubscribeCard({
       } | null;
 
       if (res.ok && data?.ok) {
-        setStatus(data.status === "already_subscribed" ? "already" : "subscribed");
+        setStatus(
+          data.status === "already_subscribed" ? "already" : "subscribed"
+        );
         setEmailInput("");
       } else if (data?.code === "DB_NOT_CONFIGURED") {
         setStatus("local_demo");
@@ -1105,7 +1370,9 @@ function NewsletterSubscribeCard({
       </p>
       {status === "subscribed" || status === "already" ? (
         <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-          {status === "already" ? dict.newsletterAlready : dict.newsletterSuccess}
+          {status === "already"
+            ? dict.newsletterAlready
+            : dict.newsletterSuccess}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-1.5">
