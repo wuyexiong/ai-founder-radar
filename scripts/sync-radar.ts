@@ -259,6 +259,9 @@ async function backfillMissingTranslations(
 async function main() {
   const backfillOnly = process.argv.includes("--backfill-only");
   const enrichLocal = process.argv.includes("--enrich-local");
+  const skipIfTodaySynced =
+    process.argv.includes("--skip-if-synced") ||
+    process.env.SKIP_IF_TODAY_SYNCED?.trim().toLowerCase() === "true";
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
   }).format(new Date());
@@ -278,6 +281,32 @@ async function main() {
     await backfillMissingTranslations(db);
     console.log("✅ 云端多语言数据回填全部完成！");
     process.exit(0);
+  }
+
+  if (skipIfTodaySynced && db) {
+    try {
+      const existingDaily = await db
+        .select({ selectedCount: dailyStats.selectedCount })
+        .from(dailyStats)
+        .where(eq(dailyStats.dateKey, today))
+        .limit(1);
+
+      const count = existingDaily[0]?.selectedCount ?? 0;
+      if (count >= 10) {
+        console.log(
+          `⏭️ [AI Founder Radar] 兜底调度检测到今日 (${today}) 已成功同步 ${count} 条商业信号，直接跳过（0 抓取 / 0 LLM 消耗）。`
+        );
+        process.exit(0);
+      }
+      console.log(
+        `🔄 [AI Founder Radar] 兜底调度检测到今日 (${today}) 尚未完成同步（当前 ${count} 条），自动触发补跑...`
+      );
+    } catch (err) {
+      console.warn(
+        "⚠️ 检查今日同步状态失败，继续执行完整同步:",
+        formatSafeError(err)
+      );
+    }
   }
 
   console.log(

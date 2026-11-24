@@ -3,10 +3,16 @@ name: Daily AI Founder Radar Sync
 permissions:
   contents: read
 
+concurrency:
+  group: daily-radar-sync
+  cancel-in-progress: false
+
 on:
   schedule:
-    # 每天 UTC 23:35 运行（对应北京时间早上 07:35，错开整点调度拥堵），同时自动保活 Supabase 免费库
-    - cron: "35 23 * * *"
+    # 主调度：每天 UTC 23:23（北京时间 07:23，错开整点及 5 分钟倍数队列高峰），同时自动保活 Supabase 免费库
+    - cron: "23 23 * * *"
+    # 兜底防丢包调度：每天 UTC 00:17（北京时间 08:17），若今日已完成同步则秒退（0 LLM 消耗），防范 GitHub 静默丢弃主 cron
+    - cron: "17 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -40,4 +46,5 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           NEXT_PUBLIC_SITE_URL: "https://radar.aibuildon.com"
+          SKIP_IF_TODAY_SYNCED: ${{ github.event_name == 'schedule' && github.event.schedule == '17 0 * * *' && 'true' || 'false' }}
         run: npm run radar:sync

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import nextConfig from "../next.config";
@@ -342,5 +343,17 @@ test("security CSP header allows *.clarity.ms scripts", async () => {
   assert.ok(
     cspHeader.value.includes("https://*.clarity.ms"),
     "CSP script-src includes https://*.clarity.ms"
+  );
+});
+
+test("daily-radar GitHub Actions workflow uses odd-minute dual cron with concurrency & idempotent skip", () => {
+  const yml = readFileSync(".github/workflows/daily-radar.yml", "utf8");
+  assert.ok(yml.includes('cron: "23 23 * * *"'), "primary odd-minute cron present");
+  assert.ok(yml.includes('cron: "17 0 * * *"'), "backup odd-minute cron present");
+  assert.ok(yml.includes("workflow_dispatch:"), "manual trigger enabled");
+  assert.ok(yml.includes("group: daily-radar-sync"), "concurrency group configured");
+  assert.ok(
+    yml.includes("SKIP_IF_TODAY_SYNCED:"),
+    "idempotent backup skip env configured"
   );
 });
