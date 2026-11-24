@@ -51,7 +51,7 @@ export default async function DailyArchivePage({ params }: DailyArchiveProps) {
     notFound();
   }
 
-  const payload = await getRadarPayload(locale, date);
+  const payload = await getRadarPayload(locale, date, true);
   if (payload.activeDate !== date) {
     notFound();
   }

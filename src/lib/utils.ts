@@ -56,9 +56,43 @@ export function buildSignalPermalink(params: {
   locale: Locale;
   dateKey: string;
   signalId: string;
+  utmSource?: string;
 }): string {
   const base = params.siteUrl.trim().replace(/\/$/, "");
-  return `${base}/${params.locale}/daily/${params.dateKey}#${encodeURIComponent(params.signalId)}`;
+  const query = params.utmSource?.trim()
+    ? `?utm_source=${encodeURIComponent(params.utmSource.trim())}`
+    : "";
+  return `${base}/${params.locale}/daily/${params.dateKey}${query}#${encodeURIComponent(params.signalId)}`;
+}
+
+export function buildTrackedOutboundUrl(
+  raw: string | undefined | null,
+  utm: {
+    source?: string;
+    medium?: string;
+    campaign?: string;
+  } = {}
+): string {
+  if (!raw) return "#";
+  try {
+    const parsed = new URL(raw.trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return "#";
+    }
+    const source = utm.source?.trim() || "radar.aibuildon.com";
+    if (!parsed.searchParams.has("utm_source")) {
+      parsed.searchParams.set("utm_source", source);
+    }
+    if (utm.medium?.trim() && !parsed.searchParams.has("utm_medium")) {
+      parsed.searchParams.set("utm_medium", utm.medium.trim());
+    }
+    if (utm.campaign?.trim() && !parsed.searchParams.has("utm_campaign")) {
+      parsed.searchParams.set("utm_campaign", utm.campaign.trim());
+    }
+    return parsed.toString();
+  } catch {
+    return "#";
+  }
 }
 
 export function formatSignalShareBrief(params: {

@@ -13,6 +13,7 @@ import {
 import { type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
+import { trackRadarEvent } from "@/lib/analytics";
 import {
   getTopicCopy,
   isValidTopicSlug,
@@ -64,11 +65,9 @@ interface SignalCardProps {
   dict: Dictionary["card"];
   isBookmarked: boolean;
   isHighlighted?: boolean;
-  activeTag: string | null;
   activeTopicSlug?: string | null;
   archivedDateHref?: string;
   hubDateHref?: string;
-  onSelectTag: (tag: string) => void;
   onToggleBookmark: (item: SignalItem) => void;
 }
 
@@ -78,11 +77,9 @@ export function SignalCard({
   dict,
   isBookmarked,
   isHighlighted = false,
-  activeTag,
   activeTopicSlug,
   archivedDateHref,
   hubDateHref,
-  onSelectTag,
   onToggleBookmark,
 }: SignalCardProps) {
   const [copied, setCopied] = useState(false);
@@ -134,6 +131,7 @@ export function SignalCard({
       locale,
       dateKey: item.dateKey,
       signalId: item.id,
+      utmSource: "share_brief",
     });
 
     const briefText = formatSignalShareBrief({
@@ -176,6 +174,12 @@ export function SignalCard({
     }
 
     if (success) {
+      trackRadarEvent("signal_copy_brief", {
+        signal_id: item.id,
+        platform: item.sourcePlatform,
+        category: item.category,
+        locale,
+      });
       setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => {
@@ -266,6 +270,16 @@ export function SignalCard({
             href={safeSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() =>
+              trackRadarEvent("signal_outbound_click", {
+                signal_id: item.id,
+                platform: item.sourcePlatform,
+                category: item.category,
+                score: item.score,
+                locale,
+                placement: "title",
+              })
+            }
             className="block text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-50 dark:group-hover:text-blue-400"
           >
             {item.title}
@@ -311,28 +325,17 @@ export function SignalCard({
         </div>
       </div>
 
-      {/* 第 4 层：底栏本页切口筛选标签、常青专题 SEO 内链与微裂变操作行 */}
+      {/* 第 4 层：底栏切口标签、常青专题 SEO 内链与微裂变操作行 */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          {item.tags.map((tag) => {
-            const selected = activeTag === tag;
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => onSelectTag(tag)}
-                title={dict.filterByTag(tag)}
-                className={cn(
-                  "rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer",
-                  selected
-                    ? "bg-blue-600 text-white shadow-2xs"
-                    : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
-                )}
-              >
-                {tag}
-              </button>
-            );
-          })}
+          {item.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+            >
+              {tag}
+            </span>
+          ))}
 
           {topicPills.map((slug) => {
             const isCurrent = activeTopicSlug === slug;
@@ -395,6 +398,16 @@ export function SignalCard({
             href={safeSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() =>
+              trackRadarEvent("signal_outbound_click", {
+                signal_id: item.id,
+                platform: item.sourcePlatform,
+                category: item.category,
+                score: item.score,
+                locale,
+                placement: "button",
+              })
+            }
             className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:border-blue-500/50 dark:hover:text-blue-400"
           >
             {dict.viewSource}

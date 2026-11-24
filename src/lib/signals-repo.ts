@@ -72,6 +72,7 @@ export interface HubDirectory {
 export interface RadarPagePayload {
   locale: Locale;
   storageMode: "supabase" | "local-fallback";
+  isArchiveRoute?: boolean;
   availableDates: string[];
   activeDate: string;
   overview: DailyOverview;
@@ -212,6 +213,8 @@ function resolveLocalizedSummary(
 }
 
 const ARCHIVE_DATES_LIMIT = 365;
+// Cap full multi-locale JSONB corpus per unstable_cache entry strictly below Next.js 2MB limit (~360 * 3.2KB ≈ 1.15MB)
+export const RECENT_CORPUS_CACHE_LIMIT = 360;
 const HUB_SCAN_WINDOW_LIMIT = 1500;
 const HUB_DISPLAY_ITEMS_LIMIT = 200;
 const CORPUS_CACHE_REVALIDATE_SECONDS = 600;
@@ -359,7 +362,7 @@ async function loadRecentRawSignalsUncached(): Promise<{
         .select()
         .from(signalItems)
         .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
-        .limit(HUB_SCAN_WINDOW_LIMIT);
+        .limit(RECENT_CORPUS_CACHE_LIMIT);
 
       if (rows.length > 0) {
         return {
@@ -396,7 +399,30 @@ const getRecentRawSignals = cache(
 );
 
 async function computeSeoHubIndexUncached(): Promise<HubDirectory> {
-  const { records } = await getRecentRawSignals();
+  const recent = await getRecentRawSignals();
+  let records = recent.records;
+
+  // When DB exceeds the 360-row 2MB-safe cache window, scan up to 1,500 rows and cache ONLY the ~2KB HubDirectory summary
+  if (
+    recent.storageMode === "supabase" &&
+    recent.records.length >= RECENT_CORPUS_CACHE_LIMIT
+  ) {
+    const db = getDb();
+    if (db && hasDatabaseConfigured()) {
+      try {
+        const widerRows = await db
+          .select()
+          .from(signalItems)
+          .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
+          .limit(HUB_SCAN_WINDOW_LIMIT);
+        if (widerRows.length > 0) {
+          records = widerRows.map(mapDbRowToRawRecord);
+        }
+      } catch {
+        // Fall back to recent 360-row slice
+      }
+    }
+  }
 
   const topicMap = new Map<TopicSlug, ActiveTopicStat>();
   const sourceMap = new Map<SourcePlatform, ActiveSourceStat>();
@@ -531,10 +557,28 @@ async function loadDateRawRecordsByQuery(
   return rows.map(mapDbRowToRawRecord);
 }
 
+export const getRecentLocalizedSignals = cache(
+  async (
+    locale: Locale = DEFAULT_LOCALE,
+    limit = 40
+  ): Promise<{ latestDateKey: string; items: SignalItem[] }> => {
+    const [dates, corpus] = await Promise.all([
+      getAllAvailableDates(),
+      getRecentRawSignals(),
+    ]);
+    const capped = corpus.records.slice(0, Math.max(1, limit));
+    const items = capped.map((rec) => resolveLocalizedSignal(rec, locale));
+    const latestDateKey =
+      items[0]?.dateKey ?? dates[0] ?? "2026-11-23";
+    return { latestDateKey, items };
+  }
+);
+
 export const getRadarPayload = cache(
   async (
     locale: Locale = DEFAULT_LOCALE,
-    requestedDate?: string
+    requestedDate?: string,
+    isArchiveRoute = false
   ): Promise<RadarPagePayload> => {
     const dict = getDictionary(locale);
     const localizedTools = dict.sidebar.tools;
@@ -594,7 +638,7 @@ export const getRadarPayload = cache(
           corpus.records[corpus.records.length - 1]?.dateKey;
         const isFullyCoveredInCorpus =
           corpus.storageMode === "supabase" &&
-          (corpus.records.length < HUB_SCAN_WINDOW_LIMIT ||
+          (corpus.records.length < RECENT_CORPUS_CACHE_LIMIT ||
             (Boolean(oldestCorpusDate) && activeDate > oldestCorpusDate));
 
         const dayRawRecords = isFullyCoveredInCorpus
@@ -610,6 +654,7 @@ export const getRadarPayload = cache(
         return {
           locale,
           storageMode: "supabase",
+          isArchiveRoute,
           availableDates,
           activeDate,
           overview: {
@@ -660,6 +705,7 @@ export const getRadarPayload = cache(
     return {
       locale,
       storageMode: "local-fallback",
+      isArchiveRoute,
       availableDates,
       activeDate,
       overview: {
@@ -769,9 +815,36 @@ export const getTopicHubPayload = cache(
     ]);
 
     const copy = getTopicCopy(slug, locale);
-    const matchedRecords = corpus.records.filter((rec) =>
+    let matchedRecords = corpus.records.filter((rec) =>
       rec.topics.includes(slug)
     );
+
+    if (
+      corpus.storageMode === "supabase" &&
+      corpus.records.length >= RECENT_CORPUS_CACHE_LIMIT
+    ) {
+      const db = getDb();
+      if (db && hasDatabaseConfigured()) {
+        try {
+          matchedRecords = await runWithCorpusCache(
+            `afr-topic-items-v1:${slug}`,
+            async () => {
+              const rows = await db
+                .select()
+                .from(signalItems)
+                .orderBy(desc(signalItems.dateKey), desc(signalItems.score))
+                .limit(HUB_SCAN_WINDOW_LIMIT);
+              return rows
+                .map(mapDbRowToRawRecord)
+                .filter((rec) => rec.topics.includes(slug))
+                .slice(0, HUB_DISPLAY_ITEMS_LIMIT);
+            }
+          );
+        } catch {
+          // Fall back to recent cached corpus slice
+        }
+      }
+    }
 
     return buildHubPayloadFromMatchedRecords({
       locale,
@@ -801,8 +874,8 @@ export const getSourceHubPayload = cache(
     ]);
     const copy = getSourceCopy(platform, locale);
 
-    // 当语料窗口未触及 1500 条截断上限时，直接从内存零查询切片返回
-    if (corpus.records.length < HUB_SCAN_WINDOW_LIMIT) {
+    // 当语料窗口未触及 360 条安全缓存上限时，直接从内存零查询切片返回
+    if (corpus.records.length < RECENT_CORPUS_CACHE_LIMIT) {
       const matchedRecords = corpus.records.filter(
         (rec) => rec.sourcePlatform === platform
       );

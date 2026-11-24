@@ -83,6 +83,9 @@ export interface Dictionary {
   };
   footer: {
     copyright: string;
+    rssLabel: string;
+    llmsLabel: string;
+    githubLabel: string;
   };
   notFound: {
     title: string;
@@ -203,35 +206,35 @@ const EN_DICT: Dictionary = {
         tagline: "Open-source Postgres + 50k MAU Auth out of the box",
         category: "Database & Auth",
         freeTierNote: "500MB Free DB",
-        url: "https://supabase.com",
+        url: "https://supabase.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Cloudflare",
         tagline: "At-cost domains, global edge CDN & zero-egress R2",
         category: "DNS & Edge",
         freeTierNote: "Free Forever CDN",
-        url: "https://www.cloudflare.com",
+        url: "https://www.cloudflare.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Creem / Lemon Squeezy",
         tagline: "Merchant of Record for global SaaS subscriptions & tax",
         category: "Global Payments",
         freeTierNote: "$0/mo + Per-Tx",
-        url: "https://www.creem.io",
+        url: "https://www.creem.io?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "PostHog",
         tagline: "Product analytics, funnels & session replay for builders",
         category: "Growth Analytics",
         freeTierNote: "1M Events/mo Free",
-        url: "https://posthog.com",
+        url: "https://posthog.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Resend",
         tagline: "Transactional & daily digest emails built with React",
         category: "Email API",
         freeTierNote: "3,000 Emails/mo",
-        url: "https://resend.com",
+        url: "https://resend.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
     ],
     newsletterTitle: "5-Minute Daily Indie Digest",
@@ -248,6 +251,9 @@ const EN_DICT: Dictionary = {
   footer: {
     copyright:
       "AI Founder Radar · High-Signal Micro-SaaS, AI & Indie Hacker Revenue Intelligence · Powered by Next.js + Drizzle + Supabase",
+    rssLabel: "RSS Feed",
+    llmsLabel: "llms.txt (AI Index)",
+    githubLabel: "GitHub (MIT)",
   },
   notFound: {
     title: "Signal Archive Not Found",
@@ -369,35 +375,35 @@ const ZH_DICT: Dictionary = {
         tagline: "开源 PostgreSQL 数据库 + 免费 5万月活登录",
         category: "数据库 & Auth",
         freeTierNote: "500MB 免费库",
-        url: "https://supabase.com",
+        url: "https://supabase.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Cloudflare",
         tagline: "成本价域名注册 + 全球免费 CDN 与防刷保护",
         category: "域名 & 安全",
         freeTierNote: "永久免费 CDN",
-        url: "https://www.cloudflare.com",
+        url: "https://www.cloudflare.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Creem / Lemon Squeezy",
         tagline: "免海外公司门槛，个人也能收全球美元订阅",
         category: "出海收款",
         freeTierNote: "0 月费按单抽成",
-        url: "https://www.creem.io",
+        url: "https://www.creem.io?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "PostHog",
         tagline: "流量统计 + 点击事件漏斗 + 免费用户录屏回放",
         category: "增长分析",
         freeTierNote: "100万事件/月免费",
-        url: "https://posthog.com",
+        url: "https://posthog.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Resend",
         tagline: "用 React 组件发送高颜值注册验证与每日早报邮件",
         category: "邮件服务",
         freeTierNote: "3,000封/月免费",
-        url: "https://resend.com",
+        url: "https://resend.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
     ],
     newsletterTitle: "订阅每日 5 分钟出海搞钱早报",
@@ -413,6 +419,9 @@ const ZH_DICT: Dictionary = {
   footer: {
     copyright:
       "AI Founder Radar · 专注全球出海、AI、Micro-SaaS 与独立开发真实变现信号 · Powered by Next.js + Drizzle + Supabase",
+    rssLabel: "RSS 订阅源",
+    llmsLabel: "llms.txt (AI 索引)",
+    githubLabel: "GitHub 开源仓库",
   },
   notFound: {
     title: "未找到该期商业信号归档",
@@ -534,35 +543,35 @@ const ZH_TW_DICT: Dictionary = {
         tagline: "開源 PostgreSQL 資料庫 + 免費 5 萬月活登入驗證",
         category: "資料庫 & Auth",
         freeTierNote: "500MB 免費額度",
-        url: "https://supabase.com",
+        url: "https://supabase.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Cloudflare",
         tagline: "成本價網域註冊 + 全球免費 CDN 與防刷保護",
         category: "網域 & 安全",
         freeTierNote: "永久免費 CDN",
-        url: "https://www.cloudflare.com",
+        url: "https://www.cloudflare.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Creem / Lemon Squeezy",
         tagline: "免設海外公司門檻，個人也能收全球美元訂閱",
         category: "跨境收款",
         freeTierNote: "0 月費按單抽成",
-        url: "https://www.creem.io",
+        url: "https://www.creem.io?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "PostHog",
         tagline: "流量統計 + 點擊事件漏斗 + 免費使用者錄影回放",
         category: "成長分析",
         freeTierNote: "100 萬事件/月免費",
-        url: "https://posthog.com",
+        url: "https://posthog.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Resend",
         tagline: "用 React 元件發送高質感註冊驗證與每日早報信件",
         category: "郵件服務",
         freeTierNote: "3,000 封/月免費",
-        url: "https://resend.com",
+        url: "https://resend.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
     ],
     newsletterTitle: "訂閱每日 5 分鐘出海變現早報",
@@ -578,6 +587,9 @@ const ZH_TW_DICT: Dictionary = {
   footer: {
     copyright:
       "AI Founder Radar · 專注全球出海、AI、Micro-SaaS 與獨立開發真實變現信號 · Powered by Next.js + Drizzle + Supabase",
+    rssLabel: "RSS 訂閱源",
+    llmsLabel: "llms.txt (AI 索引)",
+    githubLabel: "GitHub 開源專案",
   },
   notFound: {
     title: "找不到該期商業信號歸檔",
@@ -699,35 +711,35 @@ const JA_DICT: Dictionary = {
         tagline: "オープンソース PostgreSQL + 月間5万MAUまで認証無料",
         category: "DB & 認証",
         freeTierNote: "500MB 無料枠",
-        url: "https://supabase.com",
+        url: "https://supabase.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Cloudflare",
         tagline: "原価ドメイン取得 + 無料グローバルCDN＆DDoS保護",
         category: "ドメイン & CDN",
         freeTierNote: "永久無料 CDN",
-        url: "https://www.cloudflare.com",
+        url: "https://www.cloudflare.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Creem / Lemon Squeezy",
         tagline: "海外法人不要で世界中のドル建てサブスク決済を導入",
         category: "グローバル決済",
         freeTierNote: "月額$0・成果報酬",
-        url: "https://www.creem.io",
+        url: "https://www.creem.io?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "PostHog",
         tagline: "アクセス解析・ファネル分析・ユーザー行動録画を一体化",
         category: "グロース分析",
         freeTierNote: "月100万イベント無料",
-        url: "https://posthog.com",
+        url: "https://posthog.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
       {
         name: "Resend",
         tagline: "Reactコンポーネントで美しい認証メールや日刊メルマガ配信",
         category: "メール配信API",
         freeTierNote: "月3,000通まで無料",
-        url: "https://resend.com",
+        url: "https://resend.com?utm_source=radar.aibuildon.com&utm_medium=sidebar&utm_campaign=indie_stack",
       },
     ],
     newsletterTitle: "毎日5分の海外個人開発メルマガ",
@@ -744,6 +756,9 @@ const JA_DICT: Dictionary = {
   footer: {
     copyright:
       "AI Founder Radar · 世界のMicro-SaaS・AI・個人開発のリアルな収益シグナルを厳選 · Powered by Next.js + Drizzle + Supabase",
+    rssLabel: "RSS フィード",
+    llmsLabel: "llms.txt (AI 索引)",
+    githubLabel: "GitHub (OSS)",
   },
   notFound: {
     title: "アーカイブが見つかりません",

@@ -9,6 +9,18 @@ import {
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
+  if (pathname === "/feed.xml" || pathname === "/rss.xml") {
+    const preferred = detectPreferredLocale(
+      request.headers.get("accept-language"),
+      request.cookies.get(LOCALE_COOKIE)?.value
+    );
+    const url = request.nextUrl.clone();
+    url.pathname = `/${preferred}/feed.xml`;
+    const response = NextResponse.redirect(url, 307);
+    response.headers.set("Vary", "Accept-Language, Cookie");
+    return response;
+  }
+
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||

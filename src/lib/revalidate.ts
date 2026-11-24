@@ -30,10 +30,15 @@ export function collectRevalidatePaths(
   dateKey?: string | null,
   previousDateKey?: string | null
 ): string[] {
-  const paths = new Set<string>(["/sitemap.xml"]);
+  const paths = new Set<string>([
+    "/sitemap.xml",
+    "/llms.txt",
+    "/llms-full.txt",
+  ]);
 
   for (const loc of LOCALES) {
     paths.add(`/${loc}`);
+    paths.add(`/${loc}/feed.xml`);
     if (isPlausibleArchiveDate(dateKey)) {
       paths.add(`/${loc}/daily/${dateKey}`);
     }

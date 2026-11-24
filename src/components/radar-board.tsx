@@ -20,6 +20,7 @@ import {
   Moon,
   Radar,
   RotateCcw,
+  Rss,
   Search,
   Sparkles,
   Sun,
@@ -38,9 +39,10 @@ import {
   type Locale,
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { trackRadarEvent } from "@/lib/analytics";
 import { getTopicCopy } from "@/lib/seo-taxonomy";
 import type { RadarPagePayload } from "@/lib/signals-repo";
-import { cn, toSafeHttpUrl } from "@/lib/utils";
+import { buildTrackedOutboundUrl, cn } from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -89,6 +91,7 @@ function persistLocaleCookie(nextLocale: Locale) {
 export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const {
     locale,
+    isArchiveRoute = false,
     availableDates,
     activeDate,
     overview,
@@ -102,6 +105,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const dict = useMemo(() => getDictionary(locale), [locale]);
   const latestDate = availableDates[0];
   const isHubPage = Boolean(hub);
+  const defaultTab: TabFilter = isHubPage || isArchiveRoute ? "all" : "top";
 
   const tabs: Array<{ id: TabFilter; label: string; icon: React.ReactNode }> =
     useMemo(
@@ -142,10 +146,8 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       [dict]
     );
 
-  // 专题聚合页默认展开 "all"（确保首屏 SSR HTML 100% 输出该专题全部卡片供 Google 抓取）
-  const [activeTab, setActiveTab] = useState<TabFilter>(
-    isHubPage ? "all" : "top"
-  );
+  // 专题聚合页与每日独立归档页默认展开 "all"（确保首屏 SSR HTML 100% 输出全部卡片供搜索引擎抓取）
+  const [activeTab, setActiveTab] = useState<TabFilter>(defaultTab);
   const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
     null
   );
@@ -164,21 +166,23 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const routeKey = hub ? `${hub.kind}:${hub.slug}` : `daily:${activeDate}`;
+  const routeKey = hub
+    ? `${hub.kind}:${hub.slug}`
+    : `${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
   const prevRouteKeyRef = useRef(routeKey);
 
   // 客户端跨专题/日期软路由切换时重置筛选状态与乐观日期
   useEffect(() => {
     if (prevRouteKeyRef.current !== routeKey) {
       prevRouteKeyRef.current = routeKey;
-      setActiveTab(hub ? "all" : "top");
+      setActiveTab(hub || isArchiveRoute ? "all" : "top");
       setActivePlatform(null);
       setActiveTag(null);
       setSearchQuery("");
       setDatePickerOpen(false);
       setOptimisticDate(null);
     }
-  }, [routeKey, hub]);
+  }, [routeKey, hub, isArchiveRoute]);
 
   // 点击外部或按 Escape 收起归档日期下拉面板
   useEffect(() => {
@@ -287,6 +291,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   };
 
   const toggleBookmark = (targetItem: SignalItem) => {
+    const willSave = !Boolean(savedSnapshots[targetItem.id]);
+    trackRadarEvent("signal_bookmark", {
+      signal_id: targetItem.id,
+      platform: targetItem.sourcePlatform,
+      category: targetItem.category,
+      action: willSave ? "save" : "remove",
+      locale,
+    });
     setSavedSnapshots((prev) => {
       const next = { ...prev };
       if (next[targetItem.id]) {
@@ -525,7 +537,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       (i) => i.id === targetItem.id
     );
     if (!isCurrentlyVisible) {
-      setActiveTab(isHubPage ? "all" : targetItem.isTopPick ? "top" : "all");
+      setActiveTab(
+        isHubPage || isArchiveRoute
+          ? "all"
+          : targetItem.isTopPick
+            ? "top"
+            : "all"
+      );
       setActivePlatform(null);
       setActiveTag(null);
       setSearchQuery("");
@@ -560,7 +578,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       const matched = items.find((it) => it.id === targetId);
       if (!matched) return;
 
-      if (!isHubPage && !matched.isTopPick) {
+      if (!isHubPage && !isArchiveRoute && !matched.isTopPick) {
         setActiveTab("all");
         setActivePlatform(null);
         setActiveTag(null);
@@ -849,7 +867,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               type="button"
               onClick={() =>
                 setActiveTab((prev) =>
-                  prev === "saved" ? (isHubPage ? "all" : "top") : "saved"
+                  prev === "saved" ? defaultTab : "saved"
                 )
               }
               className={cn(
@@ -1264,7 +1282,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               </div>
             )}
 
-            {/* 信号卡片列表 */}
+            {/* 信号卡片列表（移动端在第 4 张卡片后内嵌早报订阅卡，消除长滚到底部断层） */}
             {filteredItems.length > 0 ? (
               <div
                 className={cn(
@@ -1272,30 +1290,44 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   isSwitchingDate && "opacity-60 pointer-events-none"
                 )}
               >
-                {filteredItems.map((item) => (
-                  <SignalCard
-                    key={item.id}
-                    item={item}
-                    locale={locale}
-                    dict={dict.card}
-                    isBookmarked={Boolean(savedSnapshots[item.id])}
-                    isHighlighted={highlightedId === item.id}
-                    activeTag={activeTag}
-                    activeTopicSlug={hub?.kind === "topic" ? hub.slug : null}
-                    hubDateHref={
-                      isHubPage
-                        ? buildLocalePath(locale, item.dateKey, latestDate)
-                        : undefined
-                    }
-                    archivedDateHref={
-                      activeTab === "saved" && item.dateKey !== activeDate
-                        ? buildLocalePath(locale, item.dateKey, latestDate)
-                        : undefined
-                    }
-                    onSelectTag={handleSelectTag}
-                    onToggleBookmark={toggleBookmark}
-                  />
-                ))}
+                {filteredItems.map((item, idx) => {
+                  const inlineSubscribeIdx =
+                    activeTab !== "saved"
+                      ? Math.min(3, filteredItems.length - 1)
+                      : -1;
+                  return (
+                    <div key={item.id} className="space-y-3.5">
+                      <SignalCard
+                        item={item}
+                        locale={locale}
+                        dict={dict.card}
+                        isBookmarked={Boolean(savedSnapshots[item.id])}
+                        isHighlighted={highlightedId === item.id}
+                        activeTopicSlug={hub?.kind === "topic" ? hub.slug : null}
+                        hubDateHref={
+                          isHubPage
+                            ? buildLocalePath(locale, item.dateKey, latestDate)
+                            : undefined
+                        }
+                        archivedDateHref={
+                          activeTab === "saved" && item.dateKey !== activeDate
+                            ? buildLocalePath(locale, item.dateKey, latestDate)
+                            : undefined
+                        }
+                        onToggleBookmark={toggleBookmark}
+                      />
+                      {idx === inlineSubscribeIdx && (
+                        <div className="lg:hidden">
+                          <NewsletterSubscribeCard
+                            dict={dict.sidebar}
+                            locale={locale}
+                            placement="inline"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#111827]">
@@ -1413,9 +1445,20 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                   {tools.map((tool) => (
                     <a
                       key={tool.name}
-                      href={toSafeHttpUrl(tool.url)}
+                      href={buildTrackedOutboundUrl(tool.url, {
+                        source: "radar.aibuildon.com",
+                        medium: "sidebar",
+                        campaign: "indie_stack",
+                      })}
                       target="_blank"
-                      rel="noopener noreferrer"
+                      rel="noopener noreferrer sponsored"
+                      onClick={() =>
+                        trackRadarEvent("toolbox_click", {
+                          tool_name: tool.name,
+                          category: tool.category,
+                          locale,
+                        })
+                      }
                       className="group flex items-start justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 transition-all hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-800 dark:hover:bg-slate-800/50"
                     >
                       <div>
@@ -1438,7 +1481,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
               </div>
 
               {/* 模块 3：每日早报邮件订阅（真实存库 + 自动推送） */}
-              <NewsletterSubscribeCard dict={dict.sidebar} locale={locale} />
+              <NewsletterSubscribeCard
+                dict={dict.sidebar}
+                locale={locale}
+                placement="sidebar"
+              />
             </div>
           </aside>
         </div>
@@ -1542,9 +1589,39 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           </section>
         )}
 
-        {/* 页脚 */}
+        {/* 页脚与开放订阅/索引入口 */}
         <footer className="mt-10 border-t border-slate-200/80 pt-6 pb-10 text-center text-xs text-slate-400 dark:border-slate-800/80 dark:text-slate-500">
-          {dict.footer.copyright}
+          <div className="mb-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 font-medium text-slate-500 dark:text-slate-400">
+            <a
+              href={`/${locale}/feed.xml`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 transition-colors hover:text-orange-600 dark:hover:text-orange-400"
+            >
+              <Rss className="h-3.5 w-3.5" />
+              <span>{dict.footer.rssLabel}</span>
+            </a>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <a
+              href="/llms.txt"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono transition-colors hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              {dict.footer.llmsLabel}
+            </a>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <a
+              href="https://github.com/wuyexiong/ai-founder-radar"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 transition-colors hover:text-slate-900 dark:hover:text-white"
+            >
+              <span>{dict.footer.githubLabel}</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+          <p>{dict.footer.copyright}</p>
         </footer>
       </main>
     </div>
@@ -1554,9 +1631,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 function NewsletterSubscribeCard({
   dict,
   locale,
+  placement = "sidebar",
 }: {
   dict: ReturnType<typeof getDictionary>["sidebar"];
   locale: Locale;
+  placement?: "sidebar" | "inline";
 }) {
   const [emailInput, setEmailInput] = useState("");
   const [honeypot, setHoneypot] = useState("");
@@ -1587,22 +1666,44 @@ function NewsletterSubscribeCard({
       } | null;
 
       if (res.ok && data?.ok) {
-        setStatus(
-          data.status === "already_subscribed" ? "already" : "subscribed"
-        );
+        const nextStatus =
+          data.status === "already_subscribed" ? "already" : "subscribed";
+        setStatus(nextStatus);
         setEmailInput("");
+        trackRadarEvent("newsletter_submit", {
+          locale,
+          placement,
+          result: nextStatus,
+        });
       } else if (data?.code === "DB_NOT_CONFIGURED") {
         setStatus("local_demo");
       } else {
         setStatus("error");
+        trackRadarEvent("newsletter_submit", {
+          locale,
+          placement,
+          result: "error",
+        });
       }
     } catch {
       setStatus("error");
+      trackRadarEvent("newsletter_submit", {
+        locale,
+        placement,
+        result: "error",
+      });
     }
   };
 
   return (
-    <div className="rounded-xl border border-slate-200/90 bg-white p-4 dark:border-slate-800 dark:bg-[#111827]">
+    <div
+      className={cn(
+        "rounded-xl border p-4",
+        placement === "inline"
+          ? "border-blue-200/90 bg-gradient-to-br from-blue-50/70 to-white dark:border-blue-500/30 dark:from-blue-950/25 dark:to-[#111827]"
+          : "border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]"
+      )}
+    >
       <h2 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
         <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
         {dict.newsletterTitle}

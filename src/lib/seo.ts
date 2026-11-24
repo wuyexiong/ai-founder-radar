@@ -57,6 +57,9 @@ export function buildRadarMetadata({
     alternates: {
       canonical: `${siteUrl}${canonicalPath}`,
       languages,
+      types: {
+        "application/rss+xml": `${siteUrl}/${locale}/feed.xml`,
+      },
     },
     openGraph: {
       title,
@@ -190,6 +193,9 @@ export function buildHubMetadata({
     alternates: {
       canonical: `${siteUrl}${canonicalPath}`,
       languages,
+      types: {
+        "application/rss+xml": `${siteUrl}/${locale}/feed.xml`,
+      },
     },
     openGraph: {
       title: seoTitle,
