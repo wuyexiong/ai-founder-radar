@@ -13,6 +13,16 @@ import {
   isAuthorizedRevalidateToken,
   SIGNALS_CORPUS_CACHE_TAG,
 } from "../src/lib/revalidate";
+import {
+  buildIncrementalSyncPlan,
+  computeMergedScannedCount,
+  evaluateScheduleGate,
+  getUsPacificUtcOffsetHours,
+  MORNING_BACKUP_CRON,
+  MORNING_PRIMARY_CRON,
+  US_NIGHT_PDT_CRON,
+  US_NIGHT_PST_CRON,
+} from "../src/lib/sync-schedule";
 import { middleware } from "../src/middleware";
 import {
   detectPreferredLocale,
@@ -493,19 +503,153 @@ test("security CSP header allows *.clarity.ms scripts", async () => {
   );
 });
 
-test("daily-radar GitHub Actions workflow uses odd-minute dual cron with concurrency & idempotent skip", () => {
+test("daily-radar GitHub Actions workflow uses odd-minute morning + DST-aware US late-night crons", () => {
   const yml = readFileSync(".github/workflows/daily-radar.yml", "utf8");
-  assert.ok(yml.includes('cron: "23 23 * * *"'), "primary odd-minute cron present");
-  assert.ok(yml.includes('cron: "17 0 * * *"'), "backup odd-minute cron present");
+  assert.ok(yml.includes(`cron: "${MORNING_PRIMARY_CRON}"`), "primary morning cron present");
+  assert.ok(yml.includes(`cron: "${MORNING_BACKUP_CRON}"`), "backup morning cron present");
+  assert.ok(yml.includes(`cron: "${US_NIGHT_PDT_CRON}"`), "US late-night PDT cron present");
+  assert.ok(yml.includes(`cron: "${US_NIGHT_PST_CRON}"`), "US late-night PST cron present");
   assert.ok(yml.includes("workflow_dispatch:"), "manual trigger enabled");
   assert.ok(yml.includes("group: daily-radar-sync"), "concurrency group configured");
   assert.ok(
-    yml.includes("SKIP_IF_TODAY_SYNCED:"),
-    "idempotent backup skip env configured"
+    yml.includes("id: schedule_gate") && yml.includes('TZ="America/Los_Angeles" date +%z'),
+    "DST pre-checkout schedule gate configured"
+  );
+  assert.ok(
+    yml.includes("SKIP_IF_TODAY_SYNCED:") &&
+      yml.includes("github.event.schedule == '17 0 * * *'"),
+    "idempotent skip applies strictly to morning fallback cron, not US late-night supplement"
   );
   assert.ok(
     yml.includes("REVALIDATE_SECRET:"),
     "on-demand revalidation secret passed in workflow"
+  );
+});
+
+test("sync-schedule DST gate and incremental deduplication planner cover winter/summer & App Store cap", () => {
+  // 1. Summer PDT (July: UTC-7): 33 6 * * * runs (even if delayed past 07:00 UTC), 33 7 * * * skips
+  const summerQueuedLate = new Date("2026-07-15T07:08:00Z"); // 00:08 PDT after 35m runner delay
+  assert.equal(getUsPacificUtcOffsetHours(summerQueuedLate), -7);
+
+  const pdtInSummer = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: US_NIGHT_PDT_CRON,
+    now: summerQueuedLate,
+  });
+  assert.equal(pdtInSummer.shouldRun, true);
+  assert.equal(pdtInSummer.isUsNightSupplement, true);
+
+  const pstInSummer = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: US_NIGHT_PST_CRON,
+    now: summerQueuedLate,
+  });
+  assert.equal(pstInSummer.shouldRun, false);
+  assert.equal(pstInSummer.isUsNightSupplement, true);
+
+  // 2. Winter PST (November: UTC-8): 33 6 * * * skips, 33 7 * * * runs (even if delayed past 08:00 UTC)
+  const winterQueuedLate = new Date("2026-11-24T08:08:00Z"); // 00:08 PST after 35m runner delay
+  assert.equal(getUsPacificUtcOffsetHours(winterQueuedLate), -8);
+
+  const pdtInWinter = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: US_NIGHT_PDT_CRON,
+    now: winterQueuedLate,
+  });
+  assert.equal(pdtInWinter.shouldRun, false);
+
+  const pstInWinter = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: US_NIGHT_PST_CRON,
+    now: winterQueuedLate,
+  });
+  assert.equal(pstInWinter.shouldRun, true);
+  assert.equal(pstInWinter.isUsNightSupplement, true);
+
+  // 3. Morning primary, morning backup, and manual dispatch always pass gate
+  const backupGate = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: MORNING_BACKUP_CRON,
+    now: winterQueuedLate,
+  });
+  assert.equal(backupGate.shouldRun, true);
+  assert.equal(backupGate.isMorningBackup, true);
+
+  const primaryGate = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: MORNING_PRIMARY_CRON,
+    now: winterQueuedLate,
+  });
+  assert.equal(primaryGate.shouldRun, true);
+  assert.equal(primaryGate.isMorningBackup, false);
+
+  const manualGate = evaluateScheduleGate({
+    eventName: "workflow_dispatch",
+    now: winterQueuedLate,
+  });
+  assert.equal(manualGate.shouldRun, true);
+
+  // 4. Incremental sync plan: Morning empty state vs Afternoon supplement state
+  const morningPlan = buildIncrementalSyncPlan({
+    historicalUrls: ["https://example.com/old-1"],
+    todayRows: [],
+    defaultAppStoreLimit: 10,
+  });
+  assert.equal(morningPlan.isSupplementRun, false);
+  assert.equal(morningPlan.appStoreLimit, 10);
+  assert.equal(morningPlan.collectorExcludeUrls.size, 1);
+
+  const partialWithoutAppStore = buildIncrementalSyncPlan({
+    historicalUrls: ["https://example.com/old-1"],
+    todayRows: [
+      { sourceUrl: "https://www.producthunt.com/posts/foo", sourcePlatform: "producthunt" },
+    ],
+    defaultAppStoreLimit: 10,
+  });
+  assert.equal(partialWithoutAppStore.isSupplementRun, true);
+  assert.equal(partialWithoutAppStore.appStoreLimit, 10);
+  assert.equal(
+    partialWithoutAppStore.collectorExcludeUrls.has("https://www.producthunt.com/posts/foo"),
+    true
+  );
+
+  const afternoonSupplementPlan = buildIncrementalSyncPlan({
+    historicalUrls: ["https://example.com/old-1"],
+    todayRows: [
+      { sourceUrl: "https://www.producthunt.com/posts/foo", sourcePlatform: "producthunt" },
+      { sourceUrl: "https://apps.apple.com/us/app/bar/id123", sourcePlatform: "appstore" },
+    ],
+    defaultAppStoreLimit: 10,
+  });
+  assert.equal(afternoonSupplementPlan.isSupplementRun, true);
+  assert.equal(afternoonSupplementPlan.todayAppStoreCount, 1);
+  assert.equal(afternoonSupplementPlan.appStoreLimit, 0);
+  assert.equal(afternoonSupplementPlan.collectorExcludeUrls.size, 3);
+
+  // 5. Merged scannedCount accumulation without zero-addition inflation
+  assert.equal(
+    computeMergedScannedCount({
+      previousScannedCount: undefined,
+      currentScannedCount: 310,
+      newlyDistilledCount: 22,
+    }),
+    310
+  );
+  assert.equal(
+    computeMergedScannedCount({
+      previousScannedCount: 310,
+      currentScannedCount: 145,
+      newlyDistilledCount: 9,
+    }),
+    455
+  );
+  assert.equal(
+    computeMergedScannedCount({
+      previousScannedCount: 455,
+      currentScannedCount: 140,
+      newlyDistilledCount: 0,
+    }),
+    455
   );
 });
 

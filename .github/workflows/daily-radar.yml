@@ -9,10 +9,15 @@ concurrency:
 
 on:
   schedule:
-    # 主调度：每天 UTC 23:23（北京时间 07:23，错开整点及 5 分钟倍数队列高峰），同时自动保活 Supabase 免费库
+    # 1. 早盘主调度：每天 UTC 23:23（北京时间 07:23，错开整点及 5 分钟倍数队列高峰），同时自动保活 Supabase 免费库
     - cron: "23 23 * * *"
-    # 兜底防丢包调度：每天 UTC 00:17（北京时间 08:17），若今日已完成同步则秒退（0 LLM 消耗），防范 GitHub 静默丢弃主 cron
+    # 2. 早盘兜底防丢包调度：每天 UTC 00:17（北京时间 08:17），若今日已完成同步则秒退（0 LLM 消耗），防范 GitHub 静默丢弃主 cron
     - cron: "17 0 * * *"
+    # 3. 美西深夜收官补采（夏令时 PDT = UTC-7，3月中~11月初生效）：UTC 06:33 = 美西 23:33 PDT（北京时间 14:33）
+    #    预留 GitHub Actions 队列启动缓冲，实际抓取落点稳定在美西 23:35~23:50 PT（赶在 Product Hunt 00:00 PT 重置前收官）
+    - cron: "33 6 * * *"
+    # 4. 美西深夜收官补采（冬令时 PST = UTC-8，11月初~3月中生效）：UTC 07:33 = 美西 23:33 PST（北京时间 15:33）
+    - cron: "33 7 * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,19 +25,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Check US Pacific DST schedule gate
+        id: schedule_gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_EXPR: ${{ github.event.schedule }}
+        run: |
+          PT_OFFSET=$(TZ="America/Los_Angeles" date +%z)
+          echo "Event=${EVENT_NAME}, Schedule=${SCHEDULE_EXPR:-manual}, America/Los_Angeles=${PT_OFFSET}"
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$SCHEDULE_EXPR" = "33 6 * * *" ] && [ "$PT_OFFSET" != "-0700" ]; then
+            echo "⏭️ 当前美西处于冬令时 (${PT_OFFSET})，跳过夏令时槽位 (33 6 * * *)，将在 33 7 * * * 执行。"
+            echo "run_sync=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$SCHEDULE_EXPR" = "33 7 * * *" ] && [ "$PT_OFFSET" != "-0800" ]; then
+            echo "⏭️ 当前美西处于夏令时 (${PT_OFFSET})，已由 33 6 * * * 执行，跳过冬令时槽位 (33 7 * * *)。"
+            echo "run_sync=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run_sync=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
+        if: steps.schedule_gate.outputs.run_sync == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
+        if: steps.schedule_gate.outputs.run_sync == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
+        if: steps.schedule_gate.outputs.run_sync == 'true'
         run: npm ci
 
       - name: Run Multi-Source Fetch & AI Distillation
+        if: steps.schedule_gate.outputs.run_sync == 'true'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -47,5 +76,7 @@ jobs:
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
           NEXT_PUBLIC_SITE_URL: "https://radar.aibuildon.com"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SCHEDULE_CRON: ${{ github.event.schedule }}
           SKIP_IF_TODAY_SYNCED: ${{ github.event_name == 'schedule' && github.event.schedule == '17 0 * * *' && 'true' || 'false' }}
         run: npm run radar:sync

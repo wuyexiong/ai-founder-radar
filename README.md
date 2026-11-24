@@ -46,7 +46,7 @@ Most AI newsletters drown solo builders in big-tech press releases, funding anno
 
 ## 8 Primary Signal Sources
 
-Every morning at `07:35 UTC+8`, the collector pipeline scans 8 complementary overseas ecosystems in parallel, deduplicates against historical URLs, and scores commercial viability (`1.0–10.0`):
+Twice daily (`07:23 UTC+8` morning briefing + `23:33 PT` US late-night pre-reset supplement), the collector pipeline scans 8 complementary overseas ecosystems in parallel, deduplicates against historical and same-day URLs, and scores commercial viability (`1.0–10.0`):
 
 | Source | Signal Category | Collection Method | Commercial Focus |
 | :--- | :--- | :--- | :--- |
@@ -65,7 +65,7 @@ Every morning at `07:35 UTC+8`, the collector pipeline scans 8 complementary ove
 
 ```mermaid
 flowchart LR
-  Cron["⏰ GitHub Actions Cron (07:35 UTC+8)"] --> Collectors["📡 8-Source Parallel Collectors"]
+  Cron["⏰ GitHub Actions Cron (07:23 UTC+8 & 23:33 PT)"] --> Collectors["📡 8-Source Parallel Collectors"]
   Collectors --> Distiller["🧠 AI Commercial Lens (EN / ZH / ZH-TW / JA)"]
   Distiller --> DB[("🗄️ Supabase PostgreSQL (Drizzle + RLS)")]
   DB --> Web["⚡ Vercel Next.js 15 Static ISR (10m)"]
@@ -127,7 +127,7 @@ npm run radar:backfill  # Backfill missing en / zh-TW / ja fields for historical
 | `REDDIT_CLIENT_ID` / `SECRET` | GitHub Actions / Local | No | Optional Reddit OAuth credentials (defaults to zero-auth mirror feed) |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Vercel | No | Optional PostHog / `NEXT_PUBLIC_GA_ID` / `NEXT_PUBLIC_CLARITY_ID` analytics |
 
-> **Automated Daily Updates**: Add `DATABASE_URL` and `GEMINI_API_KEY` to your repository's **Settings → Secrets and variables → Actions**. [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) runs automatically every day at `23:35 UTC` (`07:35 UTC+8`).
+> **Automated Daily Updates**: Add `DATABASE_URL` and `GEMINI_API_KEY` to your repository's **Settings → Secrets and variables → Actions**. [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) runs automatically twice daily at `07:23 UTC+8` and `23:33 America/Los_Angeles` (DST-aware).
 
 ---
 

@@ -13,6 +13,11 @@ import {
 import { sendDailyNewsletterDigests } from "../src/lib/newsletter";
 import { buildIndexNowUrlList } from "../src/lib/revalidate";
 import {
+  buildIncrementalSyncPlan,
+  computeMergedScannedCount,
+  evaluateScheduleGate,
+} from "../src/lib/sync-schedule";
+import {
   fetchAppStoreTopGrossing,
   fetchGitHubTrending,
   fetchTrustMrr,
@@ -260,6 +265,16 @@ async function backfillMissingTranslations(
 async function main() {
   const backfillOnly = process.argv.includes("--backfill-only");
   const enrichLocal = process.argv.includes("--enrich-local");
+  const scheduleGate = evaluateScheduleGate({
+    eventName: process.env.GITHUB_EVENT_NAME,
+    scheduleCron: process.env.GITHUB_SCHEDULE_CRON,
+  });
+
+  if (!backfillOnly && !enrichLocal && !scheduleGate.shouldRun) {
+    console.log(`⏭️ [AI Founder Radar] ${scheduleGate.reason}`);
+    process.exit(0);
+  }
+
   const skipIfTodaySynced =
     process.argv.includes("--skip-if-synced") ||
     process.env.SKIP_IF_TODAY_SYNCED?.trim().toLowerCase() === "true";
@@ -320,11 +335,12 @@ async function main() {
 
   const historicalUrls = new Set<string>();
   const todayExistingByUrl = new Map<string, SignalItem>();
+  let existingTodayStat: typeof dailyStats.$inferSelect | undefined;
 
   if (db) {
     try {
       // 全量轻量读取所有历史 URL 用于跨日防重（避免 500 条截断后重复消耗 LLM 额度）
-      const [allUrlRows, todayRows] = await Promise.all([
+      const [allUrlRows, todayRows, todayStatRows] = await Promise.all([
         db
           .select({
             sourceUrl: signalItems.sourceUrl,
@@ -335,7 +351,14 @@ async function main() {
           .select()
           .from(signalItems)
           .where(eq(signalItems.dateKey, today)),
+        db
+          .select()
+          .from(dailyStats)
+          .where(eq(dailyStats.dateKey, today))
+          .limit(1),
       ]);
+
+      existingTodayStat = todayStatRows[0];
 
       for (const row of allUrlRows) {
         if (row.dateKey !== today) {
@@ -371,6 +394,22 @@ async function main() {
     }
   }
 
+  const syncPlan = buildIncrementalSyncPlan({
+    historicalUrls,
+    todayRows: Array.from(todayExistingByUrl.values()),
+    defaultAppStoreLimit: 10,
+  });
+
+  if (syncPlan.isSupplementRun) {
+    console.log(
+      `🔄 [增量补采模式] 今日已收录 ${syncPlan.todayExistingCount} 条信号（自动并入去重池释放抓取配额${
+        syncPlan.appStoreLimit === 0
+          ? `；今日已有 ${syncPlan.todayAppStoreCount} 条 App Store 记录，跳过静态榜顺延翻页`
+          : ""
+      }）。`
+    );
+  }
+
   resetScannedCandidatesCount();
 
   const [
@@ -383,17 +422,22 @@ async function main() {
     githubItems,
     redditItems,
   ] = await Promise.all([
-    fetchProductHuntFeed(4, historicalUrls),
-    fetchHackerNewsShowHN(4, historicalUrls),
-    fetchIndieHackers(4, historicalUrls),
-    fetchAcquireListings(4, historicalUrls),
-    fetchTrustMrr(10, historicalUrls),
-    fetchAppStoreTopGrossing(10, historicalUrls),
-    fetchGitHubTrending(10, 4, historicalUrls),
+    fetchProductHuntFeed(4, syncPlan.collectorExcludeUrls),
+    fetchHackerNewsShowHN(4, syncPlan.collectorExcludeUrls),
+    fetchIndieHackers(4, syncPlan.collectorExcludeUrls),
+    fetchAcquireListings(4, syncPlan.collectorExcludeUrls),
+    fetchTrustMrr(10, syncPlan.collectorExcludeUrls),
+    syncPlan.appStoreLimit > 0
+      ? fetchAppStoreTopGrossing(
+          syncPlan.appStoreLimit,
+          syncPlan.collectorExcludeUrls
+        )
+      : Promise.resolve([]),
+    fetchGitHubTrending(10, 4, syncPlan.collectorExcludeUrls),
     fetchRedditSubreddits(
       ["SaaS", "microsaas", "SomebodyMakeThis"],
       2,
-      historicalUrls
+      syncPlan.collectorExcludeUrls
     ),
   ]);
 
@@ -547,14 +591,39 @@ async function main() {
       publishedAt: row.publishedAt.toISOString(),
     }));
 
+    if (todayAllItems.length === 0) {
+      console.warn(
+        `⚠️ 今日 (${today}) 尚无达到精选分数线 (>= 6.3) 的商业信号，跳过 daily_stats 看板更新。`
+      );
+      process.exit(0);
+    }
+
+    const hasCompleteExistingSummary = Boolean(
+      existingTodayStat?.summaryNote &&
+        existingTodayStat.summaryTranslations?.en &&
+        existingTodayStat.summaryTranslations?.ja &&
+        existingTodayStat.summaryTranslations?.["zh-TW"]
+    );
+
     const { summaryNote, summaryTranslations } =
-      await generateDailyEditorialSummary(todayAllItems);
+      newlyDistilled.length === 0 && hasCompleteExistingSummary
+        ? {
+            summaryNote: existingTodayStat!.summaryNote,
+            summaryTranslations: existingTodayStat!.summaryTranslations!,
+          }
+        : await generateDailyEditorialSummary(todayAllItems);
+
+    const mergedScannedCount = computeMergedScannedCount({
+      previousScannedCount: existingTodayStat?.scannedCount,
+      currentScannedCount: rawScannedTotal,
+      newlyDistilledCount: newlyDistilled.length,
+    });
 
     await db
       .insert(dailyStats)
       .values({
         dateKey: today,
-        scannedCount: rawScannedTotal,
+        scannedCount: mergedScannedCount,
         selectedCount: todayAllItems.length,
         estimatedReadMinutes: Math.max(4, Math.ceil(todayAllItems.length / 3.5)),
         summaryNote,
@@ -563,7 +632,7 @@ async function main() {
       .onConflictDoUpdate({
         target: dailyStats.dateKey,
         set: {
-          scannedCount: rawScannedTotal,
+          scannedCount: mergedScannedCount,
           selectedCount: todayAllItems.length,
           estimatedReadMinutes: Math.max(
             4,
@@ -576,20 +645,31 @@ async function main() {
       });
 
     console.log(
-      `✅ 已成功同步至 Supabase PostgreSQL！（今日累计精选 ${todayAllItems.length} 条，本次新增 ${newlyDistilled.length} 条，四语种齐全）`
+      `✅ 已成功同步至 Supabase PostgreSQL！（今日累计扫描 ${mergedScannedCount} 条、精选 ${todayAllItems.length} 条，本次新增 ${newlyDistilled.length} 条，四语种齐全）`
     );
 
-    const recentDateRows = await db
-      .select({ dateKey: dailyStats.dateKey })
-      .from(dailyStats)
-      .orderBy(desc(dailyStats.dateKey))
-      .limit(2);
-    const previousDateKey = recentDateRows.find((r) => r.dateKey !== today)?.dateKey;
+    const shouldRefreshWebAndSearch =
+      newlyDistilled.length > 0 || !existingTodayStat;
 
-    // 主动触发 Vercel On-Demand Revalidation，确保首页、昨日归档页日期箭头与 sitemap 秒级生效
-    await triggerOnDemandRevalidate(today, previousDateKey);
+    if (shouldRefreshWebAndSearch) {
+      const recentDateRows = await db
+        .select({ dateKey: dailyStats.dateKey })
+        .from(dailyStats)
+        .orderBy(desc(dailyStats.dateKey))
+        .limit(2);
+      const previousDateKey = recentDateRows.find(
+        (r) => r.dateKey !== today
+      )?.dateKey;
 
-    // 每日早报邮件推送（配置 RESEND_API_KEY 后自动生效，按订阅者语言发送 Top 5）
+      // 主动触发 Vercel On-Demand Revalidation，确保首页、昨日归档页日期箭头与 sitemap 秒级生效
+      await triggerOnDemandRevalidate(today, previousDateKey);
+    } else {
+      console.log(
+        "ℹ️ 本次补采无新增入库条目，保留现有线上缓存与 IndexNow 状态。"
+      );
+    }
+
+    // 每日早报邮件推送（配置 RESEND_API_KEY 后自动生效；按 lastSentDate 防重，下午补采不会向已发订阅者重复群发）
     await sendDailyNewsletterDigests({
       db,
       dateKey: today,
@@ -598,11 +678,13 @@ async function main() {
       summaryTranslations,
     });
 
-    // 自动向 IndexNow (Bing / Yandex / Naver / Seznam) 主动推送今日四语种首页、归档页及命中的常青专题/信源页
-    await pingIndexNow(
-      today,
-      newlyDistilled.length > 0 ? newlyDistilled : todayAllItems
-    );
+    if (shouldRefreshWebAndSearch) {
+      // 自动向 IndexNow (Bing / Yandex / Naver / Seznam) 主动推送今日四语种首页、归档页及命中的常青专题/信源页
+      await pingIndexNow(
+        today,
+        newlyDistilled.length > 0 ? newlyDistilled : todayAllItems
+      );
+    }
   } else {
     console.log(
       `ℹ️ 当前未配置 DATABASE_URL，本次抓取已完成验证（新增四语种提炼 ${newlyDistilled.length} 条）。`

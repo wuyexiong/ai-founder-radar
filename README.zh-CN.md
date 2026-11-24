@@ -46,7 +46,7 @@
 
 ## 8 大海外一手商业信源矩阵
 
-每天早上 `07:35`（北京时间），采集管线并行扫描以下 8 大海外一手渠道，完成跨日 URL 防重与商业参考价值打分（`1.0 ~ 10.0`，低于 `6.3` 自动淘汰）：
+每天两次（北京时间早盘 `07:23` + 美西深夜 `23:33 PT` 结榜前夕补采），采集管线并行扫描以下 8 大海外一手渠道，完成跨日及同日增量 URL 防重与商业参考价值打分（`1.0 ~ 10.0`，低于 `6.3` 自动淘汰）：
 
 | 信源平台 | 信号类型 | 采集方式 | 核心商业看点 |
 | :--- | :--- | :--- | :--- |
@@ -65,7 +65,7 @@
 
 ```mermaid
 flowchart LR
-  Cron["⏰ GitHub Actions 定时任务 (07:35 北京时间)"] --> Collectors["📡 8 大海外信源并行采集与去重"]
+  Cron["⏰ GitHub Actions 定时任务 (早 07:23 + 美西 23:33 PT)"] --> Collectors["📡 8 大海外信源并行采集与去重"]
   Collectors --> Distiller["🧠 AI 商业透镜四语种提炼 (简/繁/英/日)"]
   Distiller --> DB[("🗄️ Supabase PostgreSQL (Drizzle + RLS)")]
   DB --> Web["⚡ Vercel Next.js 15 静态 ISR (10分钟刷新)"]
@@ -127,7 +127,7 @@ npm run radar:backfill  # 为数据库早期历史记录自动补全英 / 繁 / 
 | `REDDIT_CLIENT_ID` / `SECRET` | GitHub Actions / 本地 | 否 | 可选 Reddit 官方 OAuth 凭据（留空默认走免认证实时镜像源） |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Vercel | 否 | 按需开启 PostHog / `NEXT_PUBLIC_GA_ID` / `NEXT_PUBLIC_CLARITY_ID` 埋点 |
 
-> **开启云端无人值守更新**：在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加 `DATABASE_URL` 和 `GEMINI_API_KEY` 即可激活 [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) 每日早 `07:35` 自动采集。
+> **开启云端无人值守更新**：在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加 `DATABASE_URL` 和 `GEMINI_API_KEY` 即可激活 [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) 每日双时段（北京时间早 `07:23` + 美西深夜 `23:33 PT` 冬夏令时自适应）自动采集。
 
 ---
 
