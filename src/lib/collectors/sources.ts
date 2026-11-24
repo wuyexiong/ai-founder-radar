@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
 import type { SourcePlatform } from "@/types/signal";
 
 export interface RawFetchedItem {
@@ -477,15 +478,10 @@ export async function fetchIndieHackers(
   excludeUrls?: Set<string>
 ): Promise<RawFetchedItem[]> {
   try {
-    const [homeRes, productsRes] = await Promise.allSettled([
-      fetchWithTimeout(
-        "https://r.jina.ai/https://www.indiehackers.com/",
-        { headers: { "X-Return-Format": "markdown" } },
-        14000
-      ),
-      fetchWithTimeout(
-        "https://r.jina.ai/https://www.indiehackers.com/products?revenueVerification=stripe&sorting=newest-first",
-        { headers: { "X-Return-Format": "markdown" } },
+    const [homeRes, productsRes] = await Promise.all([
+      fetchViaJinaMarkdown("https://www.indiehackers.com/", 14000),
+      fetchViaJinaMarkdown(
+        "https://www.indiehackers.com/products?revenueVerification=stripe&sorting=newest-first",
         14000
       ),
     ]);
@@ -493,8 +489,8 @@ export async function fetchIndieHackers(
     const candidates: Array<RawFetchedItem & { rank: number; needBodyFetch?: boolean }> = [];
 
     // 3a. 解析首页顶部实时社区热帖与 Featured 当日快讯（截断底部常青分类归档区）
-    if (homeRes.status === "fulfilled" && homeRes.value.ok) {
-      const md = await homeRes.value.text();
+    if (homeRes && homeRes.ok) {
+      const md = await homeRes.text();
       // 仅取首页前 18 个实时流条目，避开页面底部数月前的 /post/tech 等静态归档块
       const postBlocks = md.split(/^###\s+/m).slice(1, 19);
       addScannedCount(postBlocks.length);
@@ -540,8 +536,8 @@ export async function fetchIndieHackers(
     }
 
     // 3b. 解析 The Build Board 新品与里程碑更新
-    if (productsRes.status === "fulfilled" && productsRes.value.ok) {
-      const md = await productsRes.value.text();
+    if (productsRes && productsRes.ok) {
+      const md = await productsRes.text();
       const lineRegex =
         /\[\]\((https:\/\/www\.indiehackers\.com\/product\/[^\s\)]+)\)\d+\s+!\[[^\]]*\]\([^\)]+\)\*\*([^*]+)\*\*(?:\[\]\((https?:\/\/[^\s\)]+)[^\)]*\))?([^\n]+?)\[(\d+)\]\([^\)]*"Upvote"\)/g;
       const matches = [...md.matchAll(lineRegex)];
@@ -585,12 +581,8 @@ export async function fetchIndieHackers(
           return;
         }
         try {
-          const detailRes = await fetchWithTimeout(
-            `https://r.jina.ai/${item.url}`,
-            { headers: { "X-Return-Format": "markdown" } },
-            6500
-          );
-          if (!detailRes.ok) return;
+          const detailRes = await fetchViaJinaMarkdown(item.url, 8000);
+          if (!detailRes || !detailRes.ok) return;
           const detailMd = await detailRes.text();
 
           const headerDateStr = detailMd.match(/^Published Time:\s*(.+)$/m)?.[1]?.trim();
@@ -682,12 +674,8 @@ export async function fetchAcquireListings(
       const detailed = await Promise.all(
         listings.map(async (entry): Promise<RawFetchedItem | null> => {
           try {
-            const jinaRes = await fetchWithTimeout(
-              `https://r.jina.ai/${entry.loc}`,
-              { headers: { "X-Return-Format": "markdown" } },
-              12000
-            );
-            if (jinaRes.ok) {
+            const jinaRes = await fetchViaJinaMarkdown(entry.loc, 12000);
+            if (jinaRes && jinaRes.ok) {
               const md = await jinaRes.text();
               const titleLine =
                 md
@@ -768,12 +756,11 @@ export async function fetchAcquireListings(
     }
 
     // 二级兜底：Acquire SaaS 公开精选列表页
-    const fallbackRes = await fetchWithTimeout(
-      "https://r.jina.ai/https://acquire.com/saas-companies-for-sale/",
-      { headers: { "X-Return-Format": "markdown" } },
+    const fallbackRes = await fetchViaJinaMarkdown(
+      "https://acquire.com/saas-companies-for-sale/",
       12000
     );
-    if (!fallbackRes.ok) return [];
+    if (!fallbackRes || !fallbackRes.ok) return [];
     const md = await fallbackRes.text();
     const itemRegex =
       /\*\s+\[([^\]]+?Asking price\s*\$[\d,.]+[kKmM]?[^\]]*)\]\((https:\/\/app\.acquire\.com\/startup\/[^\s\)\?]+)[^\)]*\)/gi;
@@ -830,7 +817,7 @@ export async function fetchRedditSubreddits(
           headers: {
             Authorization: `Basic ${basicAuth}`,
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "nodejs:com.indieradar.collector:v0.2",
+            "User-Agent": "nodejs:com.aifounderradar.collector:v0.3",
           },
           body: "grant_type=client_credentials",
         },
@@ -845,7 +832,7 @@ export async function fetchRedditSubreddits(
               {
                 headers: {
                   Authorization: `Bearer ${tokenData.access_token}`,
-                  "User-Agent": "nodejs:com.indieradar.collector:v0.2",
+                  "User-Agent": "nodejs:com.aifounderradar.collector:v0.3",
                 },
               },
               8000

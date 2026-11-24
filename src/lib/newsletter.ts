@@ -213,14 +213,23 @@ function localizeCardForDigest(
 function localizeSummaryForDigest(
   summaryZh: string,
   translations: SummaryTranslations | undefined,
-  locale: Locale
+  locale: Locale,
+  totalCount: number
 ): string {
   if (locale === "zh") return summaryZh;
   if (locale === "zh-TW") {
     return translations?.["zh-TW"] || toTraditionalTw(summaryZh);
   }
-  if (locale === "en") return translations?.en || summaryZh;
-  return translations?.ja || summaryZh;
+  if (locale === "en") {
+    return (
+      translations?.en ||
+      `Curated ${totalCount} verified Micro-SaaS launches, real MRR case studies, and high-intent user pain points.`
+    );
+  }
+  return (
+    translations?.ja ||
+    `本日は海外の最新プロダクト、リアルなMRR収益事例、ユーザーの課題シグナルから厳選した ${totalCount} 件をお届けします。`
+  );
 }
 
 const DIGEST_LABELS: Record<
@@ -300,7 +309,8 @@ function buildDigestContent(params: {
   const summary = localizeSummaryForDigest(
     params.summaryZh,
     params.summaryTranslations,
-    locale
+    locale,
+    totalCount
   );
   const leadTitle = localizedCards[0]?.loc.title ?? "Daily Signals";
   const subject = labels.subject(dateKey, leadTitle);

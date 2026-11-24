@@ -1,9 +1,11 @@
 import { desc, eq } from "drizzle-orm";
+import { cache } from "react";
 import localDatasetRaw from "@/data/local-signals.json";
 import { getDb, hasDatabaseConfigured } from "@/db";
 import { dailyStats, signalItems } from "@/db/schema";
 import { DEFAULT_LOCALE, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
+import { localizeSourceSublabel } from "@/lib/localize-sublabel";
 import { deriveTraditionalFields, toTraditionalTw } from "@/lib/zh-convert";
 import type {
   DailyOverview,
@@ -114,7 +116,11 @@ function resolveLocalizedSignal(
     score: base.score,
     isTopPick: base.isTopPick,
     sourcePlatform: base.sourcePlatform,
-    sourceSublabel: base.sourceSublabel,
+    sourceSublabel: localizeSourceSublabel(
+      base.sourceSublabel,
+      locale,
+      toTraditionalTw
+    ),
     sourceUrl: base.sourceUrl,
     publishedAt: base.publishedAt,
   };
@@ -142,7 +148,9 @@ function resolveLocalizedSummary(
   );
 }
 
-export async function getAllAvailableDates(): Promise<string[]> {
+const ARCHIVE_DATES_LIMIT = 365;
+
+export const getAllAvailableDates = cache(async (): Promise<string[]> => {
   const db = getDb();
   if (db && hasDatabaseConfigured()) {
     try {
@@ -150,7 +158,7 @@ export async function getAllAvailableDates(): Promise<string[]> {
         .select({ dateKey: dailyStats.dateKey })
         .from(dailyStats)
         .orderBy(desc(dailyStats.dateKey))
-        .limit(90);
+        .limit(ARCHIVE_DATES_LIMIT);
       if (statsRows.length > 0) {
         return statsRows.map((r) => r.dateKey);
       }
@@ -159,143 +167,162 @@ export async function getAllAvailableDates(): Promise<string[]> {
     }
   }
   return localDataset.overviews.map((o) => o.dateKey);
-}
+});
 
-export async function getRadarPayload(
-  locale: Locale = DEFAULT_LOCALE,
-  requestedDate?: string
-): Promise<RadarPagePayload> {
-  const dict = getDictionary(locale);
-  const localizedTools = dict.sidebar.tools;
-  const db = getDb();
+export const getRadarPayload = cache(
+  async (
+    locale: Locale = DEFAULT_LOCALE,
+    requestedDate?: string
+  ): Promise<RadarPagePayload> => {
+    const dict = getDictionary(locale);
+    const localizedTools = dict.sidebar.tools;
+    const db = getDb();
 
-  if (db && hasDatabaseConfigured()) {
-    try {
-      const statsRows = await db
-        .select()
-        .from(dailyStats)
-        .orderBy(desc(dailyStats.dateKey))
-        .limit(60);
+    if (db && hasDatabaseConfigured()) {
+      try {
+        const dateRows = await db
+          .select({ dateKey: dailyStats.dateKey })
+          .from(dailyStats)
+          .orderBy(desc(dailyStats.dateKey))
+          .limit(ARCHIVE_DATES_LIMIT);
 
-      if (statsRows.length > 0) {
-        const availableDates = statsRows.map((r) => r.dateKey);
-        const activeDate =
-          requestedDate && availableDates.includes(requestedDate)
-            ? requestedDate
-            : availableDates[0];
+        if (dateRows.length > 0) {
+          const availableDates = dateRows.map((r) => r.dateKey);
+          let activeOverviewRow:
+            | (typeof dailyStats.$inferSelect)
+            | undefined = undefined;
 
-        const activeOverviewRow =
-          statsRows.find((r) => r.dateKey === activeDate) ?? statsRows[0];
+          if (requestedDate) {
+            const exactRows = await db
+              .select()
+              .from(dailyStats)
+              .where(eq(dailyStats.dateKey, requestedDate))
+              .limit(1);
+            activeOverviewRow = exactRows[0];
+          }
 
-        const dbItems = await db
-          .select()
-          .from(signalItems)
-          .where(eq(signalItems.dateKey, activeDate))
-          .orderBy(desc(signalItems.score));
+          if (!activeOverviewRow) {
+            const latestRows = await db
+              .select()
+              .from(dailyStats)
+              .where(eq(dailyStats.dateKey, availableDates[0]))
+              .limit(1);
+            activeOverviewRow = latestRows[0];
+          }
 
-        const mappedItems: SignalItem[] = dbItems.map((row) =>
-          resolveLocalizedSignal(
-            {
-              id: row.id,
-              dateKey: row.dateKey,
-              titleZh: row.titleZh,
-              titleOrig: row.titleOrig,
-              category: row.category as SignalCategory,
-              whatItIs: row.whatItIs,
-              businessSignal: row.businessSignal,
-              indieTakeaway: row.indieTakeaway,
-              metricsBadge: row.metricsBadge,
-              metricType: row.metricType as MetricType,
-              tags: row.tags ?? [],
-              score: row.score,
-              isTopPick: row.isTopPick,
-              sourcePlatform: row.sourcePlatform as SourcePlatform,
-              sourceSublabel: row.sourceSublabel,
-              sourceUrl: row.sourceUrl,
-              publishedAt: row.publishedAt.toISOString(),
-              translations: row.translations,
-            },
-            locale
-          )
-        );
+          if (activeOverviewRow) {
+            const activeDate = activeOverviewRow.dateKey;
+            const dbItems = await db
+              .select()
+              .from(signalItems)
+              .where(eq(signalItems.dateKey, activeDate))
+              .orderBy(desc(signalItems.score));
 
-        return {
-          locale,
-          storageMode: "supabase",
-          availableDates,
-          activeDate,
-          overview: {
-            dateKey: activeOverviewRow.dateKey,
-            scannedCount: activeOverviewRow.scannedCount,
-            selectedCount: activeOverviewRow.selectedCount,
-            estimatedReadMinutes: activeOverviewRow.estimatedReadMinutes,
-            summaryNote: resolveLocalizedSummary(
-              activeOverviewRow.summaryNote,
-              activeOverviewRow.summaryTranslations,
+            const mappedItems: SignalItem[] = dbItems.map((row) =>
+              resolveLocalizedSignal(
+                {
+                  id: row.id,
+                  dateKey: row.dateKey,
+                  titleZh: row.titleZh,
+                  titleOrig: row.titleOrig,
+                  category: row.category as SignalCategory,
+                  whatItIs: row.whatItIs,
+                  businessSignal: row.businessSignal,
+                  indieTakeaway: row.indieTakeaway,
+                  metricsBadge: row.metricsBadge,
+                  metricType: row.metricType as MetricType,
+                  tags: row.tags ?? [],
+                  score: row.score,
+                  isTopPick: row.isTopPick,
+                  sourcePlatform: row.sourcePlatform as SourcePlatform,
+                  sourceSublabel: row.sourceSublabel,
+                  sourceUrl: row.sourceUrl,
+                  publishedAt: row.publishedAt.toISOString(),
+                  translations: row.translations,
+                },
+                locale
+              )
+            );
+
+            return {
               locale,
-              activeOverviewRow.selectedCount
-            ),
-          },
-          items: mappedItems,
-          tools: localizedTools,
-        };
+              storageMode: "supabase",
+              availableDates,
+              activeDate,
+              overview: {
+                dateKey: activeOverviewRow.dateKey,
+                scannedCount: activeOverviewRow.scannedCount,
+                selectedCount: activeOverviewRow.selectedCount,
+                estimatedReadMinutes: activeOverviewRow.estimatedReadMinutes,
+                summaryNote: resolveLocalizedSummary(
+                  activeOverviewRow.summaryNote,
+                  activeOverviewRow.summaryTranslations,
+                  locale,
+                  activeOverviewRow.selectedCount
+                ),
+              },
+              items: mappedItems,
+              tools: localizedTools,
+            };
+          }
+        }
+      } catch (error) {
+        const safeMsg =
+          error instanceof Error
+            ? error.message.replace(
+                /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
+                "$1***@"
+              )
+            : "Database query error";
+        console.warn(
+          "[AI Founder Radar] Supabase query failed, falling back to local dataset:",
+          safeMsg
+        );
       }
-    } catch (error) {
-      const safeMsg =
-        error instanceof Error
-          ? error.message.replace(
-              /(postgres(?:ql)?:\/\/)([^@\s]+)@/gi,
-              "$1***@"
-            )
-          : "Database query error";
-      console.warn(
-        "[IndieRadar] Supabase query failed, falling back to local dataset:",
-        safeMsg
-      );
     }
+
+    const availableDates = localDataset.overviews.map((o) => o.dateKey);
+    const activeDate =
+      requestedDate && availableDates.includes(requestedDate)
+        ? requestedDate
+        : availableDates[0];
+
+    const rawOverview =
+      localDataset.overviews.find((o) => o.dateKey === activeDate) ??
+      localDataset.overviews[0];
+
+    const items = localDataset.items
+      .filter((item) => item.dateKey === activeDate)
+      .sort((a, b) => b.score - a.score)
+      .map((item) =>
+        resolveLocalizedSignal(
+          {
+            ...item,
+            publishedAt: item.publishedAt,
+          },
+          locale
+        )
+      );
+
+    return {
+      locale,
+      storageMode: "local-fallback",
+      availableDates,
+      activeDate,
+      overview: {
+        dateKey: rawOverview.dateKey,
+        scannedCount: rawOverview.scannedCount,
+        selectedCount: rawOverview.selectedCount,
+        estimatedReadMinutes: rawOverview.estimatedReadMinutes,
+        summaryNote: resolveLocalizedSummary(
+          rawOverview.summaryNote,
+          rawOverview.summaryTranslations,
+          locale,
+          rawOverview.selectedCount
+        ),
+      },
+      items,
+      tools: localizedTools,
+    };
   }
-
-  const availableDates = localDataset.overviews.map((o) => o.dateKey);
-  const activeDate =
-    requestedDate && availableDates.includes(requestedDate)
-      ? requestedDate
-      : availableDates[0];
-
-  const rawOverview =
-    localDataset.overviews.find((o) => o.dateKey === activeDate) ??
-    localDataset.overviews[0];
-
-  const items = localDataset.items
-    .filter((item) => item.dateKey === activeDate)
-    .sort((a, b) => b.score - a.score)
-    .map((item) =>
-      resolveLocalizedSignal(
-        {
-          ...item,
-          publishedAt: item.publishedAt,
-        },
-        locale
-      )
-    );
-
-  return {
-    locale,
-    storageMode: "local-fallback",
-    availableDates,
-    activeDate,
-    overview: {
-      dateKey: rawOverview.dateKey,
-      scannedCount: rawOverview.scannedCount,
-      selectedCount: rawOverview.selectedCount,
-      estimatedReadMinutes: rawOverview.estimatedReadMinutes,
-      summaryNote: resolveLocalizedSummary(
-        rawOverview.summaryNote,
-        rawOverview.summaryTranslations,
-        locale,
-        rawOverview.selectedCount
-      ),
-    },
-    items,
-    tools: localizedTools,
-  };
-}
+);

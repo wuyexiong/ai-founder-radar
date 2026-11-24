@@ -7,21 +7,21 @@
       "estimatedReadMinutes": 4,
       "summaryNote": "今日海外重点风向：垂直行业合规小工具与 Shopify / Stripe 周边插件变现极稳；Reddit 上多人吐槽竞品订阅涨价，出现多个低门槛平替窗口。",
       "summaryTranslations": {
-        "zh-TW": "獨立開發者聚焦SEO長尾流量與高頻痛點打造微型SaaS，AI自動化與零伺服器成本方案成為變現新增長點。",
-        "en": "Indie developers are leveraging SEO long-tail traffic and niche pain points to build profitable micro-SaaS, with AI automation and zero-server tools driving new revenue.",
-        "ja": "個人開発者はSEOやニッチな課題解決型マイクロSaaSで収益化を加速させており、AI自動化やサーバーレスツールが新たなトレンドとなっています。"
+        "zh-TW": "今日海外重點風向：垂直產業合規小工具與 Shopify / Stripe 周邊外掛變現極穩；Reddit 上多人吐槽競品訂閱漲價，出現多個低門檻平替視窗。",
+        "en": "Today's pulse: vertical compliance tools and Shopify/Stripe add-ons are compounding steadily, while pricing backlash on Reddit opens clear low-friction alternative wedges.",
+        "ja": "本日のトレンド：垂直業界向けコンプライアンスツールやShopify/Stripe周辺プラグインが安定収益化。Redditでは値上げへの不満から低価格な代替ツールの需要が急増しています。"
       }
     },
     {
       "dateKey": "2026-11-22",
       "scannedCount": 298,
-      "selectedCount": 5,
+      "selectedCount": 3,
       "estimatedReadMinutes": 3,
-      "summaryNote": "昨日焦点：单人开发的本地优先（Local-first）录音纪要 App 与程序化 SEO 工具站持续跑出高利润率。",
+      "summaryNote": "昨日焦点：单人开发的合同风险检测按次付费、GitHub PR 演示视频自动化，以及 YouTube 失效返佣链接巡检持续跑出高转化切口。",
       "summaryTranslations": {
-        "zh-TW": "獨立開發者週末開發小工具迅速變現，同時AI多媒體與連結巡檢等垂直場景需求持續火爆。",
-        "en": "Indie devs turn weekend builds into fast MRR, while demand for AI video generation and affiliate link monitoring tools surges.",
-        "ja": "週末開発のツールが素早く収益化し、AI動画生成やリンク監視などのニッチな需要が高まっています。"
+        "zh-TW": "昨日焦點：單人開發的合約風險檢測按次付費、GitHub PR 演示影片自動化，以及 YouTube 失效返佣連結巡檢持續跑出高轉化切口。",
+        "en": "Yesterday's pulse: one-off contract red-flag passes, automated GitHub PR launch videos, and YouTube dead affiliate link monitors lead high-conversion indie niches.",
+        "ja": "昨日の焦点：都度課金の契約書リスク診断、GitHub PR動画自動化、YouTube切れアフィリエイトリンク監視など高転換なニッチ領域が注目を集めています。"
       }
     }
   ],
@@ -762,7 +762,7 @@
       "id": "sig-20261122-03",
       "dateKey": "2026-11-22",
       "titleZh": "高票痛点：YouTube 创作者求一个能自动检测往期视频描述里「失效带货链接」的巡检工具",
-      "titleOrig": "Creators losing ribuan in affiliate commissions from dead Amazon/SaaS links in old YouTube descriptions",
+      "titleOrig": "Creators losing thousands in affiliate commissions from dead Amazon/SaaS links in old YouTube descriptions",
       "category": "pain_point",
       "whatItIs": "拥有几百条长青视频的博主发现，两年前爆款视频简介里的亚马逊商品下架或推广链接 404，每年白白流失大量被动返佣。",
       "businessSignal": "140+ 创作者点赞求推荐；接入 YouTube Data API 定期巡检死链并给出同款高佣替换建议，按频道视频量阶梯收费 $15~$49/月。",
@@ -818,43 +818,6 @@
           ]
         }
       }
-    }
-  ],
-  "tools": [
-    {
-      "name": "Supabase",
-      "tagline": "开源 PostgreSQL 数据库 + 免费 5万月活登录",
-      "category": "数据库 & Auth",
-      "freeTierNote": "500MB 免费库",
-      "url": "https://supabase.com"
-    },
-    {
-      "name": "Cloudflare",
-      "tagline": "成本价域名注册 + 全球免费 CDN 与防刷保护",
-      "category": "域名 & 安全",
-      "freeTierNote": "永久免费 CDN",
-      "url": "https://www.cloudflare.com"
-    },
-    {
-      "name": "Creem / Lemon Squeezy",
-      "tagline": "免海外公司门槛，个人也能收全球美元订阅",
-      "category": "出海收款",
-      "freeTierNote": "0 月费按单抽成",
-      "url": "https://www.creem.io"
-    },
-    {
-      "name": "PostHog",
-      "tagline": "流量统计 + 点击事件漏斗 + 免费用户录屏回放",
-      "category": "增长分析",
-      "freeTierNote": "100万事件/月免费",
-      "url": "https://posthog.com"
-    },
-    {
-      "name": "Resend",
-      "tagline": "用 React 组件发送高颜值注册验证与每日早报邮件",
-      "category": "邮件服务",
-      "freeTierNote": "3,000封/月免费",
-      "url": "https://resend.com"
     }
   ]
 }

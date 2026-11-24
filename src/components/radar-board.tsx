@@ -21,6 +21,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Terminal,
   TrendingUp,
   Wrench,
   X,
@@ -56,6 +57,22 @@ const PLATFORM_ORDER: SourcePlatform[] = [
 ];
 
 const COLLAPSED_TAG_LIMIT = 10;
+const THEME_STORAGE_KEY = "afr-theme";
+const LEGACY_THEME_STORAGE_KEY = "indieradar-theme";
+const SAVED_ITEMS_STORAGE_KEY = "afr-saved-items";
+const LEGACY_BOOKMARKS_STORAGE_KEY = "indieradar-bookmarks";
+
+function isValidSavedSnapshot(value: unknown): value is SignalItem {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.title === "string" &&
+    typeof obj.dateKey === "string" &&
+    typeof obj.sourceUrl === "string" &&
+    typeof obj.score === "number"
+  );
+}
 
 function persistLocaleCookie(nextLocale: Locale) {
   const secureAttr =
@@ -107,6 +124,11 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           label: dict.tabs.pain_point,
           icon: <Target className="h-3.5 w-3.5 text-blue-500" />,
         },
+        {
+          id: "ai_trend",
+          label: dict.tabs.ai_trend,
+          icon: <Terminal className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />,
+        },
       ],
       [dict]
     );
@@ -119,14 +141,18 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const [tagsExpanded, setTagsExpanded] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [savedSnapshots, setSavedSnapshots] = useState<
+    Record<string, SignalItem>
+  >({});
   const [isDark, setIsDark] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 初始化主题与本地收藏夹
+  // 初始化主题与跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
   useEffect(() => {
-    const savedTheme = localStorage.getItem("indieradar-theme");
+    const savedTheme =
+      localStorage.getItem(THEME_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
     const prefersDark =
       savedTheme === "dark" ||
       (!savedTheme &&
@@ -135,10 +161,48 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     document.documentElement.classList.toggle("dark", prefersDark);
 
     try {
-      const savedIds = JSON.parse(
-        localStorage.getItem("indieradar-bookmarks") || "[]"
+      const nextMap: Record<string, SignalItem> = {};
+      const rawSnapshots = JSON.parse(
+        localStorage.getItem(SAVED_ITEMS_STORAGE_KEY) || "{}"
       );
-      if (Array.isArray(savedIds)) setBookmarks(savedIds);
+      if (rawSnapshots && typeof rawSnapshots === "object") {
+        for (const [id, snap] of Object.entries(
+          rawSnapshots as Record<string, unknown>
+        )) {
+          if (isValidSavedSnapshot(snap)) {
+            nextMap[id] = snap;
+          }
+        }
+      }
+
+      // 迁移旧版仅存 ID 列表中的当日卡片
+      const legacyIds = JSON.parse(
+        localStorage.getItem(LEGACY_BOOKMARKS_STORAGE_KEY) || "[]"
+      );
+      let migrated = false;
+      if (Array.isArray(legacyIds)) {
+        for (const id of legacyIds) {
+          if (typeof id === "string" && !nextMap[id]) {
+            const matched = items.find((it) => it.id === id);
+            if (matched) {
+              nextMap[id] = matched;
+              migrated = true;
+            }
+          }
+        }
+      }
+
+      // 同步当前页已收藏卡片的最新语种快照
+      for (const it of items) {
+        if (nextMap[it.id]) {
+          nextMap[it.id] = it;
+        }
+      }
+
+      if (migrated) {
+        localStorage.setItem(SAVED_ITEMS_STORAGE_KEY, JSON.stringify(nextMap));
+      }
+      setSavedSnapshots(nextMap);
     } catch {
       // ignore invalid json
     }
@@ -146,7 +210,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     return () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
     };
-  }, []);
+  }, [items]);
 
   // ⌘K 快捷键聚焦搜索框
   useEffect(() => {
@@ -164,18 +228,43 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     const next = !isDark;
     setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("indieradar-theme", next ? "dark" : "light");
+    localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
+    localStorage.setItem(LEGACY_THEME_STORAGE_KEY, next ? "dark" : "light");
   };
 
-  const toggleBookmark = (id: string) => {
-    setBookmarks((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((item) => item !== id)
-        : [...prev, id];
-      localStorage.setItem("indieradar-bookmarks", JSON.stringify(next));
+  const toggleBookmark = (targetItem: SignalItem) => {
+    setSavedSnapshots((prev) => {
+      const next = { ...prev };
+      if (next[targetItem.id]) {
+        delete next[targetItem.id];
+      } else {
+        next[targetItem.id] = targetItem;
+      }
+      try {
+        localStorage.setItem(SAVED_ITEMS_STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem(
+          LEGACY_BOOKMARKS_STORAGE_KEY,
+          JSON.stringify(Object.keys(next))
+        );
+      } catch {
+        // ignore quota errors
+      }
       return next;
     });
   };
+
+  // 跨天收藏夹列表：当日卡片始终使用实时语种数据，历史收藏按日期倒序 + 评分倒序排列
+  const savedItems = useMemo(() => {
+    const liveById = new Map(items.map((it) => [it.id, it]));
+    return Object.values(savedSnapshots)
+      .map((snap) => liveById.get(snap.id) ?? snap)
+      .sort((a, b) => {
+        if (a.dateKey !== b.dateKey) {
+          return b.dateKey.localeCompare(a.dateKey);
+        }
+        return b.score - a.score;
+      });
+  }, [items, savedSnapshots]);
 
   // 日期前后切换计算（availableDates 按最新在前排列）
   const currentDateIdx = availableDates.indexOf(activeDate);
@@ -188,13 +277,13 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
   // 第一级过滤：按当前频道 Tab 过滤的基础集合
   const tabScopedItems = useMemo(() => {
+    if (activeTab === "saved") return savedItems;
     return items.filter((item) => {
       if (activeTab === "top") return item.isTopPick;
-      if (activeTab === "saved") return bookmarks.includes(item.id);
       if (activeTab === "all") return true;
       return item.category === activeTab;
     });
-  }, [items, activeTab, bookmarks]);
+  }, [items, savedItems, activeTab]);
 
   // 信源平台计数
   const platformOptions = useMemo(() => {
@@ -482,7 +571,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             >
               <Bookmark className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{dict.header.saved}</span>
-              <span className="font-mono">{bookmarks.length}</span>
+              <span className="font-mono">{savedItems.length}</span>
             </button>
 
             <button
@@ -607,7 +696,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                             (tab.id === "top"
                               ? i.isTopPick
                               : tab.id === "saved"
-                                ? bookmarks.includes(i.id)
+                                ? Boolean(savedSnapshots[i.id])
                                 : i.category === tab.id)
                         )
                       ) {
@@ -789,9 +878,14 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                     item={item}
                     locale={locale}
                     dict={dict.card}
-                    isBookmarked={bookmarks.includes(item.id)}
+                    isBookmarked={Boolean(savedSnapshots[item.id])}
                     isHighlighted={highlightedId === item.id}
                     activeTag={activeTag}
+                    archivedDateHref={
+                      activeTab === "saved" && item.dateKey !== activeDate
+                        ? buildLocalePath(locale, item.dateKey, latestDate)
+                        : undefined
+                    }
                     onToggleBookmark={toggleBookmark}
                   />
                 ))}
@@ -946,7 +1040,7 @@ function NewsletterSubscribeCard({
   const [emailInput, setEmailInput] = useState("");
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState<
-    "idle" | "submitting" | "subscribed" | "already" | "error"
+    "idle" | "submitting" | "subscribed" | "already" | "error" | "local_demo"
   >("idle");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -968,11 +1062,14 @@ function NewsletterSubscribeCard({
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;
         status?: string;
+        code?: string;
       } | null;
 
       if (res.ok && data?.ok) {
         setStatus(data.status === "already_subscribed" ? "already" : "subscribed");
         setEmailInput("");
+      } else if (data?.code === "DB_NOT_CONFIGURED") {
+        setStatus("local_demo");
       } else {
         setStatus("error");
       }
@@ -1015,7 +1112,9 @@ function NewsletterSubscribeCard({
               value={emailInput}
               onChange={(e) => {
                 setEmailInput(e.target.value);
-                if (status === "error") setStatus("idle");
+                if (status === "error" || status === "local_demo") {
+                  setStatus("idle");
+                }
               }}
               placeholder="you@example.com"
               className="h-8 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
@@ -1033,6 +1132,11 @@ function NewsletterSubscribeCard({
           {status === "error" && (
             <p className="text-[11px] text-rose-600 dark:text-rose-400">
               {dict.newsletterError}
+            </p>
+          )}
+          {status === "local_demo" && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              {dict.newsletterLocalDemo}
             </p>
           )}
         </form>

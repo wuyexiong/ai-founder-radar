@@ -96,8 +96,8 @@ export default function OpenGraphImage() {
               color: "#94A3B8",
             }}
           >
-            Distilled from Product Hunt, Show HN, Indie Hackers, Acquire &
-            Reddit into actionable founder playbooks.
+            Distilled from TrustMRR, App Store, Product Hunt, Show HN, GitHub,
+            Indie Hackers, Acquire & Reddit into actionable founder playbooks.
           </div>
         </div>
 

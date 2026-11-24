@@ -1,3 +1,4 @@
+import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
 import {
   addScannedCountFromExternal,
   isSafePublicHttpUrl,
@@ -73,17 +74,9 @@ export async function fetchTrustMrr(
   excludeUrls?: Set<string>
 ): Promise<RawFetchedItem[]> {
   try {
-    const [homeRes, acquireRes] = await Promise.allSettled([
-      fetchWithTimeout(
-        "https://r.jina.ai/https://trustmrr.com/",
-        { headers: { "X-Return-Format": "markdown" } },
-        16000
-      ),
-      fetchWithTimeout(
-        "https://r.jina.ai/https://trustmrr.com/acquire",
-        { headers: { "X-Return-Format": "markdown" } },
-        16000
-      ),
+    const [homeRes, acquireRes] = await Promise.all([
+      fetchViaJinaMarkdown("https://trustmrr.com/", 16000),
+      fetchViaJinaMarkdown("https://trustmrr.com/acquire", 16000),
     ]);
 
     const candidates: Array<
@@ -146,8 +139,8 @@ export async function fetchTrustMrr(
       }
     };
 
-    if (homeRes.status === "fulfilled" && homeRes.value.ok) {
-      const homeMd = await homeRes.value.text();
+    if (homeRes && homeRes.ok) {
+      const homeMd = await homeRes.text();
       parseSaleCardsFromMarkdown(homeMd);
 
       // 解析首页 What's happening 实时创始人验证项目动态流
@@ -197,8 +190,8 @@ export async function fetchTrustMrr(
       }
     }
 
-    if (acquireRes.status === "fulfilled" && acquireRes.value.ok) {
-      const acquireMd = await acquireRes.value.text();
+    if (acquireRes && acquireRes.ok) {
+      const acquireMd = await acquireRes.text();
       parseSaleCardsFromMarkdown(acquireMd);
     }
 
@@ -206,20 +199,13 @@ export async function fetchTrustMrr(
       .sort((a, b) => b.rankScore - a.rankScore)
       .slice(0, limit);
 
-    // 按每批 5 个受控并发拉取详情页，避免触发 r.jina.ai 并发限流
-    const batchSize = 5;
-    for (let i = 0; i < picked.length; i += batchSize) {
-      const batch = picked.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (item) => {
-          try {
-            const dRes = await fetchWithTimeout(
-              `https://r.jina.ai/${item.slugUrl}`,
-              { headers: { "X-Return-Format": "markdown" } },
-              8500
-            );
-            if (!dRes.ok) return;
-            const dMd = await dRes.text();
+    // 经由全局 Jina 并发节流池拉取详情页，避免触发 r.jina.ai 20 RPM 限流
+    await Promise.all(
+      picked.map(async (item) => {
+        try {
+          const dRes = await fetchViaJinaMarkdown(item.slugUrl, 9000);
+          if (!dRes || !dRes.ok) return;
+          const dMd = await dRes.text();
             const titleLine = dMd
               .match(/^Title:\s*(.+)$/m)?.[1]
               ?.replace(/\s*[-|]\s*TrustMRR.*$/i, "")
@@ -251,12 +237,11 @@ export async function fetchTrustMrr(
                 item.summary = `${item.summary} | Startup Details: ${cleanBody.slice(0, 440)}`;
               }
             }
-          } catch {
-            // 保留列表卡片信息兜底
-          }
-        })
-      );
-    }
+        } catch {
+          // 保留列表卡片信息兜底
+        }
+      })
+    );
 
     return picked.map(({ rankScore: _r, slugUrl: _s, ...rest }) => rest);
   } catch (err) {

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import {
-  buildLocalePath,
   getSiteUrl,
   HREFLANG_MAP,
   LOCALES,
@@ -13,7 +12,6 @@ import type { DailyOverview, SignalItem } from "@/types/signal";
 interface BuildSeoParams {
   locale: Locale;
   dateKey: string;
-  latestDate: string;
   isArchiveRoute: boolean;
   overview: DailyOverview;
   items: SignalItem[];
@@ -22,7 +20,6 @@ interface BuildSeoParams {
 export function buildRadarMetadata({
   locale,
   dateKey,
-  latestDate,
   isArchiveRoute,
   overview,
   items,
@@ -52,10 +49,6 @@ export function buildRadarMetadata({
   languages["x-default"] = isArchiveRoute
     ? `${siteUrl}/en/daily/${dateKey}`
     : `${siteUrl}/en`;
-
-  // 若访问 /en/daily/<最新日期>，canonical 指向各自路径，同时保持多语种对称互指
-  void latestDate;
-  void buildLocalePath;
 
   return {
     metadataBase: new URL(siteUrl),
@@ -107,7 +100,7 @@ export function buildRadarJsonLd({
   isArchiveRoute,
   overview,
   items,
-}: Omit<BuildSeoParams, "latestDate">) {
+}: BuildSeoParams) {
   const dict = getDictionary(locale);
   const siteUrl = getSiteUrl();
   const pageUrl = isArchiveRoute

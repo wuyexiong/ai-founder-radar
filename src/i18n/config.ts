@@ -20,6 +20,13 @@ export const HREFLANG_MAP: Record<Locale, string> = {
   ja: "ja",
 };
 
+export const LOCALE_TIMEZONE_MAP: Record<Locale, string> = {
+  en: "UTC",
+  zh: "Asia/Shanghai",
+  "zh-TW": "Asia/Taipei",
+  ja: "Asia/Tokyo",
+};
+
 export const LOCALE_LABELS: Record<
   Locale,
   { short: string; native: string; flag: string }
@@ -119,6 +126,6 @@ export function getSiteUrl(): string {
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     (process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : "https://indieradar.dev");
+      : "https://radar.aibuildon.com");
   return raw.replace(/\/$/, "");
 }

@@ -108,7 +108,7 @@ async function enrichLocalDatasetFile() {
       const t = item.translations ?? {};
       if (t.en?.title && t.ja?.title && t["zh-TW"]?.title) continue;
 
-      item.translations = await translateExistingSignalRow(
+      const translated = await translateExistingSignalRow(
         {
           titleZh: item.titleZh,
           titleOrig: item.titleOrig,
@@ -122,8 +122,11 @@ async function enrichLocalDatasetFile() {
         },
         i
       );
+      if (translated.changed) {
+        item.translations = translated.translations;
+      }
       console.log(
-        `  ✓ [本地样本 ${i + 1}/${dataset.items.length}] ${item.id} -> ${(item.translations.en?.title ?? "").slice(0, 40)}`
+        `  ${translated.translatedByLlm ? "✓" : "⚠️"} [本地样本 ${i + 1}/${dataset.items.length}] ${item.id} -> ${(item.translations?.en?.title ?? "未完成").slice(0, 40)}`
       );
     }
   }
@@ -164,7 +167,7 @@ async function backfillMissingTranslations(
     );
     for (let i = 0; i < missingRows.length; i++) {
       const row = missingRows[i];
-      const translations = await translateExistingSignalRow(
+      const result = await translateExistingSignalRow(
         {
           titleZh: row.titleZh,
           titleOrig: row.titleOrig,
@@ -179,14 +182,22 @@ async function backfillMissingTranslations(
         i
       );
 
-      await db
-        .update(signalItems)
-        .set({ translations })
-        .where(eq(signalItems.id, row.id));
+      if (result.changed) {
+        await db
+          .update(signalItems)
+          .set({ translations: result.translations })
+          .where(eq(signalItems.id, row.id));
+      }
 
-      console.log(
-        `  ✓ [多语补全 ${i + 1}/${missingRows.length}] ${row.titleZh.slice(0, 28)} -> EN: ${(translations.en?.title ?? "").slice(0, 36)}`
-      );
+      if (result.translatedByLlm) {
+        console.log(
+          `  ✓ [多语补全 ${i + 1}/${missingRows.length}] ${row.titleZh.slice(0, 28)} -> EN: ${(result.translations.en?.title ?? "").slice(0, 36)}`
+        );
+      } else {
+        console.warn(
+          `  ⚠️ [多语补全跳过 ${i + 1}/${missingRows.length}] LLM 未返回有效英/日翻译，保留原状态待下次重试: ${row.titleZh.slice(0, 28)}`
+        );
+      }
     }
   }
 
@@ -263,14 +274,14 @@ async function main() {
       console.log("ℹ️ 未配置 DATABASE_URL，跳过云端回填。");
       process.exit(0);
     }
-    console.log("🌐 [IndieRadar] 启动云端历史记录四语种（简/繁/英/日）补全...");
+    console.log("🌐 [AI Founder Radar] 启动云端历史记录四语种（简/繁/英/日）补全...");
     await backfillMissingTranslations(db);
     console.log("✅ 云端多语言数据回填全部完成！");
     process.exit(0);
   }
 
   console.log(
-    `🚀 [IndieRadar] 开始同步 ${today} 海外商业信号（简/繁/英/日四语种）${
+    `🚀 [AI Founder Radar] 开始同步 ${today} 海外商业信号（简/繁/英/日四语种）${
       process.env.HTTPS_PROXY
         ? ` (代理: ${redactUrlCredentials(process.env.HTTPS_PROXY)})`
         : ""
@@ -282,38 +293,48 @@ async function main() {
 
   if (db) {
     try {
-      const recentRows = await db
-        .select()
-        .from(signalItems)
-        .orderBy(desc(signalItems.createdAt))
-        .limit(500);
+      // 全量轻量读取所有历史 URL 用于跨日防重（避免 500 条截断后重复消耗 LLM 额度）
+      const [allUrlRows, todayRows] = await Promise.all([
+        db
+          .select({
+            sourceUrl: signalItems.sourceUrl,
+            dateKey: signalItems.dateKey,
+          })
+          .from(signalItems),
+        db
+          .select()
+          .from(signalItems)
+          .where(eq(signalItems.dateKey, today)),
+      ]);
 
-      for (const row of recentRows) {
-        if (row.dateKey === today) {
-          todayExistingByUrl.set(row.sourceUrl, {
-            id: row.id,
-            dateKey: row.dateKey,
-            title: row.titleZh,
-            titleZh: row.titleZh,
-            titleOrig: row.titleOrig,
-            category: row.category as SignalCategory,
-            whatItIs: row.whatItIs,
-            businessSignal: row.businessSignal,
-            indieTakeaway: row.indieTakeaway,
-            metricsBadge: row.metricsBadge,
-            metricType: row.metricType as MetricType,
-            tags: row.tags ?? [],
-            translations: row.translations,
-            score: row.score,
-            isTopPick: row.isTopPick,
-            sourcePlatform: row.sourcePlatform as SourcePlatform,
-            sourceSublabel: row.sourceSublabel,
-            sourceUrl: row.sourceUrl,
-            publishedAt: row.publishedAt.toISOString(),
-          });
-        } else {
+      for (const row of allUrlRows) {
+        if (row.dateKey !== today) {
           historicalUrls.add(row.sourceUrl);
         }
+      }
+
+      for (const row of todayRows) {
+        todayExistingByUrl.set(row.sourceUrl, {
+          id: row.id,
+          dateKey: row.dateKey,
+          title: row.titleZh,
+          titleZh: row.titleZh,
+          titleOrig: row.titleOrig,
+          category: row.category as SignalCategory,
+          whatItIs: row.whatItIs,
+          businessSignal: row.businessSignal,
+          indieTakeaway: row.indieTakeaway,
+          metricsBadge: row.metricsBadge,
+          metricType: row.metricType as MetricType,
+          tags: row.tags ?? [],
+          translations: row.translations,
+          score: row.score,
+          isTopPick: row.isTopPick,
+          sourcePlatform: row.sourcePlatform as SourcePlatform,
+          sourceSublabel: row.sourceSublabel,
+          sourceUrl: row.sourceUrl,
+          publishedAt: row.publishedAt.toISOString(),
+        });
       }
     } catch (err) {
       console.warn("⚠️ 读取已存在 URL 缓存时跳过:", formatSafeError(err));
@@ -375,6 +396,13 @@ async function main() {
   const deduped = Array.from(uniqueMap.values()).slice(0, 65);
   const newlyDistilled: SignalItem[] = [];
   let llmCallIndex = 0;
+  let llmAttempted = 0;
+  let llmFailed = 0;
+
+  if (rawScannedTotal === 0) {
+    console.error("❌ 所有 8 个上游信源扫描结果均为 0，疑似网络中断或全线上游异常！");
+    process.exit(1);
+  }
 
   for (let i = 0; i < deduped.length; i++) {
     const raw = deduped[i];
@@ -386,7 +414,16 @@ async function main() {
       continue;
     }
 
-    const item = await distillRawItem(raw, today, llmCallIndex++);
+    llmAttempted++;
+    const { item, usedLlm } = await distillRawItem(raw, today, llmCallIndex++);
+    if (!usedLlm) {
+      llmFailed++;
+      console.warn(
+        `  ⚠️ [${i + 1}/${deduped.length}] LLM 提炼失败，拒绝写入未提炼占位数据: ${raw.title.slice(0, 42)}`
+      );
+      continue;
+    }
+
     if (item.score < 6.3) {
       console.log(
         `  ⊘ [${i + 1}/${deduped.length}] 低分玩具/水贴已过滤 (${item.score.toFixed(1)}): ${raw.title.slice(0, 42)}`
@@ -398,6 +435,13 @@ async function main() {
     console.log(
       `  ✓ [${i + 1}/${deduped.length}] [${item.sourcePlatform} · ${item.score.toFixed(1)}] ${item.titleZh.slice(0, 36)}`
     );
+  }
+
+  if (llmAttempted > 0 && llmFailed === llmAttempted && newlyDistilled.length === 0) {
+    console.error(
+      `❌ 本次共尝试提炼 ${llmAttempted} 条候选信号，全部遭遇 LLM 失败（密钥失效、配额耗尽或接口超时），终止入库以防脏数据！`
+    );
+    process.exit(1);
   }
 
   if (db) {

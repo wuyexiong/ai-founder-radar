@@ -71,5 +71,5 @@ export interface IndieToolItem {
 export interface RadarDataset {
   overviews: Array<Omit<DailyOverview, "summaryNote"> & { summaryNote: string }>;
   items: Array<Omit<SignalItem, "title"> & { title?: string }>;
-  tools: IndieToolItem[];
+  tools?: IndieToolItem[];
 }

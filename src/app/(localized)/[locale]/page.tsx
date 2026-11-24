@@ -21,7 +21,6 @@ export async function generateMetadata({
   return buildRadarMetadata({
     locale,
     dateKey: payload.activeDate,
-    latestDate: payload.availableDates[0] ?? payload.activeDate,
     isArchiveRoute: false,
     overview: payload.overview,
     items: payload.items,

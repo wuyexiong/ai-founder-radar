@@ -1,9 +1,11 @@
 "use client";
 
-import { Bookmark, ExternalLink } from "lucide-react";
-import { HTML_LANG_MAP, type Locale } from "@/i18n/config";
+import Link from "next/link";
+import { Bookmark, Calendar, ExternalLink } from "lucide-react";
+import { type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { cn, toSafeHttpUrl } from "@/lib/utils";
+import { localizeSourceSublabel } from "@/lib/localize-sublabel";
+import { cn, formatDeterministicClock, toSafeHttpUrl } from "@/lib/utils";
 import type {
   SignalCategory,
   SignalItem,
@@ -34,7 +36,7 @@ const CATEGORY_BORDER_CLASS: Record<SignalCategory, string> = {
   revenue: "border-l-emerald-500 dark:border-l-emerald-400",
   launch: "border-l-orange-500 dark:border-l-orange-400",
   pain_point: "border-l-blue-600 dark:border-l-blue-400",
-  ai_trend: "border-l-slate-500 dark:border-l-slate-400",
+  ai_trend: "border-l-cyan-600 dark:border-l-cyan-400",
 };
 
 interface SignalCardProps {
@@ -44,7 +46,8 @@ interface SignalCardProps {
   isBookmarked: boolean;
   isHighlighted?: boolean;
   activeTag: string | null;
-  onToggleBookmark: (id: string) => void;
+  archivedDateHref?: string;
+  onToggleBookmark: (item: SignalItem) => void;
 }
 
 export function SignalCard({
@@ -54,6 +57,7 @@ export function SignalCard({
   isBookmarked,
   isHighlighted = false,
   activeTag,
+  archivedDateHref,
   onToggleBookmark,
 }: SignalCardProps) {
   const platform = PLATFORM_META[item.sourcePlatform] ?? {
@@ -72,14 +76,8 @@ export function SignalCard({
         ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30"
         : "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30";
 
-  const publishedClock = new Date(item.publishedAt).toLocaleTimeString(
-    HTML_LANG_MAP[locale],
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }
-  );
+  const publishedClock = formatDeterministicClock(item.publishedAt, locale);
+  const displaySublabel = localizeSourceSublabel(item.sourceSublabel, locale);
 
   const showOrigSubtitle =
     Boolean(item.titleOrig) &&
@@ -98,19 +96,28 @@ export function SignalCard({
     >
       {/* 第 1 层：顶栏元数据 */}
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
             <span className={cn("h-2 w-2 rounded-full", platform.dotClass)} />
             {platform.label}
           </span>
-          {item.sourceSublabel && (
+          {displaySublabel && (
             <span className="text-slate-400 dark:text-slate-500">
-              · {item.sourceSublabel}
+              · {displaySublabel}
             </span>
           )}
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
             {categoryLabel}
           </span>
+          {archivedDateHref && (
+            <Link
+              href={archivedDateHref}
+              className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25"
+            >
+              <Calendar className="h-3 w-3" />
+              {dict.archivedFrom(item.dateKey)}
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center gap-2 tabular-nums">
@@ -128,9 +135,15 @@ export function SignalCard({
           >
             {item.score.toFixed(1)}
           </span>
-          <span className="text-slate-400 dark:text-slate-500">
-            {publishedClock}
-          </span>
+          {publishedClock && (
+            <time
+              dateTime={item.publishedAt}
+              title={item.publishedAt}
+              className="text-slate-400 dark:text-slate-500"
+            >
+              {publishedClock}
+            </time>
+          )}
         </div>
       </div>
 
@@ -210,7 +223,7 @@ export function SignalCard({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => onToggleBookmark(item.id)}
+            onClick={() => onToggleBookmark(item)}
             className={cn(
               "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
               isBookmarked

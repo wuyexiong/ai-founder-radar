@@ -32,6 +32,7 @@ export interface Dictionary {
     revenue: string;
     launch: string;
     pain_point: string;
+    ai_trend: string;
   };
   filters: {
     sourcesLabel: string;
@@ -55,6 +56,7 @@ export interface Dictionary {
     saved: string;
     save: string;
     viewSource: string;
+    archivedFrom: (date: string) => string;
   };
   sidebar: {
     top3Title: string;
@@ -68,10 +70,22 @@ export interface Dictionary {
     newsletterAlready: string;
     newsletterSubmitting: string;
     newsletterError: string;
+    newsletterLocalDemo: string;
     newsletterCta: string;
   };
   footer: {
     copyright: string;
+  };
+  notFound: {
+    title: string;
+    desc: string;
+    backHome: string;
+  };
+  errorPage: {
+    title: string;
+    desc: string;
+    retry: string;
+    backHome: string;
   };
 }
 
@@ -114,6 +128,7 @@ const EN_DICT: Dictionary = {
     revenue: "Revenue & MRR",
     launch: "Launches",
     pain_point: "Pain Points",
+    ai_trend: "AI & OSS",
   },
   filters: {
     sourcesLabel: "Sources",
@@ -144,6 +159,7 @@ const EN_DICT: Dictionary = {
     saved: "Saved",
     save: "Save",
     viewSource: "Source",
+    archivedFrom: (date) => `Saved from ${date}`,
   },
   sidebar: {
     top3Title: "🏆 Today's Top 3 Signals",
@@ -194,11 +210,24 @@ const EN_DICT: Dictionary = {
     newsletterAlready: "✓ Already subscribed — language preference updated.",
     newsletterSubmitting: "Saving...",
     newsletterError: "Subscription failed. Please check your email and retry.",
+    newsletterLocalDemo:
+      "Local demo mode: configure DATABASE_URL in .env.local to save subscriptions.",
     newsletterCta: "Subscribe",
   },
   footer: {
     copyright:
       "AI Founder Radar · High-Signal Micro-SaaS, AI & Indie Hacker Revenue Intelligence · Powered by Next.js + Drizzle + Supabase",
+  },
+  notFound: {
+    title: "Signal Archive Not Found",
+    desc: "The requested date or page does not exist in AI Founder Radar yet.",
+    backHome: "Back to Latest Signals",
+  },
+  errorPage: {
+    title: "Something went wrong",
+    desc: "We couldn't load today's radar signals. Please try again in a moment.",
+    retry: "Try Again",
+    backHome: "Back to Home",
   },
 };
 
@@ -241,6 +270,7 @@ const ZH_DICT: Dictionary = {
     revenue: "搞钱实战 & MRR",
     launch: "新品首发",
     pain_point: "海外痛点池",
+    ai_trend: "AI 与开源",
   },
   filters: {
     sourcesLabel: "信源",
@@ -271,6 +301,7 @@ const ZH_DICT: Dictionary = {
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
+    archivedFrom: (date) => `收藏自 ${date}`,
   },
   sidebar: {
     top3Title: "🏆 当日高分商机 Top 3",
@@ -320,11 +351,24 @@ const ZH_DICT: Dictionary = {
     newsletterAlready: "✓ 该邮箱已在订阅名单中，已同步当前语言偏好。",
     newsletterSubmitting: "提交中...",
     newsletterError: "订阅失败，请检查邮箱格式或稍后重试。",
+    newsletterLocalDemo:
+      "当前为本地样本演示模式，请在 .env.local 配置 DATABASE_URL 后启用订阅存库。",
     newsletterCta: "免费订阅",
   },
   footer: {
     copyright:
       "AI Founder Radar · 专注全球出海、AI、Micro-SaaS 与独立开发真实变现信号 · Powered by Next.js + Drizzle + Supabase",
+  },
+  notFound: {
+    title: "未找到该期商业信号归档",
+    desc: "你访问的日期归档或页面暂不存在，可以返回首页查看最新一期精选信号。",
+    backHome: "返回最新一期雷达",
+  },
+  errorPage: {
+    title: "页面加载出现异常",
+    desc: "暂时无法读取商业信号数据，请点击下方按钮重试。",
+    retry: "重新加载",
+    backHome: "返回首页",
   },
 };
 
@@ -367,6 +411,7 @@ const ZH_TW_DICT: Dictionary = {
     revenue: "搞錢實戰 & MRR",
     launch: "新品首發",
     pain_point: "海外痛點池",
+    ai_trend: "AI 與開源",
   },
   filters: {
     sourcesLabel: "來源",
@@ -397,6 +442,7 @@ const ZH_TW_DICT: Dictionary = {
     saved: "已收藏",
     save: "收藏",
     viewSource: "看原帖",
+    archivedFrom: (date) => `收藏自 ${date}`,
   },
   sidebar: {
     top3Title: "🏆 當日高分商機 Top 3",
@@ -446,11 +492,24 @@ const ZH_TW_DICT: Dictionary = {
     newsletterAlready: "✓ 此信箱已在訂閱名單中，已同步目前語言偏好。",
     newsletterSubmitting: "送出中...",
     newsletterError: "訂閱失敗，請檢查信箱格式或稍後再試。",
+    newsletterLocalDemo:
+      "目前為本機樣本展示模式，請先於 .env.local 設定 DATABASE_URL 再啟用訂閱。",
     newsletterCta: "免費訂閱",
   },
   footer: {
     copyright:
       "AI Founder Radar · 專注全球出海、AI、Micro-SaaS 與獨立開發真實變現信號 · Powered by Next.js + Drizzle + Supabase",
+  },
+  notFound: {
+    title: "找不到該期商業信號歸檔",
+    desc: "你造訪的日期歸檔或頁面目前不存在，請返回首頁檢視最新一期精選信號。",
+    backHome: "返回最新一期雷達",
+  },
+  errorPage: {
+    title: "頁面載入發生異常",
+    desc: "暫時無法讀取商業信號資料，請點擊下方按鈕重試。",
+    retry: "重新載入",
+    backHome: "返回首頁",
   },
 };
 
@@ -493,6 +552,7 @@ const JA_DICT: Dictionary = {
     revenue: "収益事例 & MRR",
     launch: "新着プロダクト",
     pain_point: "海外の課題・ニーズ",
+    ai_trend: "AI・OSS",
   },
   filters: {
     sourcesLabel: "ソース",
@@ -523,6 +583,7 @@ const JA_DICT: Dictionary = {
     saved: "保存済み",
     save: "保存",
     viewSource: "元記事",
+    archivedFrom: (date) => `${date} の保存`,
   },
   sidebar: {
     top3Title: "🏆 本日の高スコア Top 3",
@@ -573,11 +634,24 @@ const JA_DICT: Dictionary = {
     newsletterAlready: "✓ すでに登録済みです（言語設定を更新しました）。",
     newsletterSubmitting: "送信中...",
     newsletterError: "登録に失敗しました。メールアドレスをご確認の上、再試行してください。",
+    newsletterLocalDemo:
+      "ローカルデモモードです。.env.local に DATABASE_URL を設定すると購読保存が有効になります。",
     newsletterCta: "無料購読",
   },
   footer: {
     copyright:
       "AI Founder Radar · 世界のMicro-SaaS・AI・個人開発のリアルな収益シグナルを厳選 · Powered by Next.js + Drizzle + Supabase",
+  },
+  notFound: {
+    title: "アーカイブが見つかりません",
+    desc: "指定された日付またはページは AI Founder Radar にまだ存在しません。",
+    backHome: "最新シグナルへ戻る",
+  },
+  errorPage: {
+    title: "読み込みエラーが発生しました",
+    desc: "シグナルデータの取得中に問題が発生しました。しばらくしてから再度お試しください。",
+    retry: "再試行する",
+    backHome: "トップへ戻る",
   },
 };
 

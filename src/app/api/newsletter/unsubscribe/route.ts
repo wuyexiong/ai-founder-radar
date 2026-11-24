@@ -41,39 +41,59 @@ function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
-async function processUnsubscribe(token: string | null): Promise<Locale> {
+async function processUnsubscribe(
+  token: string | null
+): Promise<{ locale: Locale; ok: boolean }> {
   if (!token || !SAFE_TOKEN_RE.test(token)) {
-    return "en";
+    return { locale: "en", ok: true };
   }
 
   const db = getDb();
   if (!db || !hasDatabaseConfigured()) {
-    return "en";
+    return { locale: "en", ok: false };
   }
 
-  const rows = await db
-    .select()
-    .from(newsletterSubscribers)
-    .where(eq(newsletterSubscribers.unsubscribeToken, token))
-    .limit(1);
+  try {
+    const rows = await db
+      .select()
+      .from(newsletterSubscribers)
+      .where(eq(newsletterSubscribers.unsubscribeToken, token))
+      .limit(1);
 
-  const sub = rows[0];
-  if (!sub) return "en";
+    const sub = rows[0];
+    if (!sub) return { locale: "en", ok: true };
 
-  if (sub.status !== "unsubscribed") {
-    await db
-      .update(newsletterSubscribers)
-      .set({ status: "unsubscribed", updatedAt: new Date() })
-      .where(eq(newsletterSubscribers.id, sub.id));
+    if (sub.status !== "unsubscribed") {
+      await db
+        .update(newsletterSubscribers)
+        .set({ status: "unsubscribed", updatedAt: new Date() })
+        .where(eq(newsletterSubscribers.id, sub.id));
+    }
+
+    return {
+      locale: isValidLocale(sub.locale) ? sub.locale : "en",
+      ok: true,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "DB error";
+    console.error(
+      "[Newsletter] Unsubscribe error:",
+      msg.replace(/(postgres(?:ql)?:\/\/)([^@\s]+)@/gi, "$1***@")
+    );
+    return { locale: "en", ok: false };
   }
-
-  return isValidLocale(sub.locale) ? sub.locale : "en";
 }
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
-  const locale = await processUnsubscribe(token);
-  const copy = UNSUB_COPY[locale] ?? UNSUB_COPY.en;
+  const { locale, ok } = await processUnsubscribe(token);
+  const copy = ok
+    ? UNSUB_COPY[locale] ?? UNSUB_COPY.en
+    : {
+        title: "Temporary Error",
+        desc: "We could not process your unsubscribe request right now. Please try clicking the link again in a moment.",
+        back: "Back to AI Founder Radar →",
+      };
   const homeUrl = `${getSiteUrl()}/${locale}`;
 
   const html = `<!DOCTYPE html>
@@ -95,7 +115,7 @@ export async function GET(request: NextRequest) {
 </html>`;
 
   return new NextResponse(html, {
-    status: 200,
+    status: ok ? 200 : 503,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
@@ -106,6 +126,6 @@ export async function GET(request: NextRequest) {
 // 支持 Gmail / Yahoo RFC 8058 List-Unsubscribe-Post 一键退订请求
 export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
-  await processUnsubscribe(token);
-  return NextResponse.json({ ok: true });
+  const { ok } = await processUnsubscribe(token);
+  return NextResponse.json({ ok }, { status: ok ? 200 : 503 });
 }

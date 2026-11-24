@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "radar:sync": "node --import tsx --use-env-proxy scripts/sync-radar.ts",
     "radar:backfill": "node --import tsx --use-env-proxy scripts/sync-radar.ts --backfill-only",
     "db:generate": "drizzle-kit generate",

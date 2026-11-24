@@ -14,7 +14,10 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api") ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||
+    pathname === "/manifest.webmanifest" ||
     pathname.startsWith("/opengraph-image") ||
+    pathname.startsWith("/icon") ||
+    pathname.startsWith("/apple-icon") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();
