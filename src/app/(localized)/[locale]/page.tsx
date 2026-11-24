@@ -5,7 +5,7 @@ import { isValidLocale } from "@/i18n/config";
 import { buildRadarJsonLd, buildRadarMetadata } from "@/lib/seo";
 import { getRadarPayload } from "@/lib/signals-repo";
 
-export const revalidate = 600; // 纯静态 ISR（每 10 分钟增量刷新，配合 07:35 同步确保 07:45 前必见新数据）
+export const revalidate = 300; // 纯静态 ISR（每 5 分钟增量刷新；配合同步完成后的 /api/revalidate 实现秒级刷新）
 
 interface LocaleHomeProps {
   params: Promise<{ locale: string }>;

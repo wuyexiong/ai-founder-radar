@@ -1,0 +1,54 @@
+import { revalidatePath } from "next/cache";
+import { NextResponse, type NextRequest } from "next/server";
+import {
+  collectRevalidatePaths,
+  isAuthorizedRevalidateToken,
+} from "@/lib/revalidate";
+
+export async function POST(request: NextRequest) {
+  const secret = process.env.REVALIDATE_SECRET?.trim();
+  if (!secret) {
+    return NextResponse.json(
+      { ok: false, code: "REVALIDATE_NOT_CONFIGURED" },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  if (
+    !isAuthorizedRevalidateToken(request.headers.get("authorization"), secret)
+  ) {
+    return NextResponse.json(
+      { ok: false, code: "UNAUTHORIZED" },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = await request.json();
+    if (parsed && typeof parsed === "object") {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // 空 body 同样合法，默认刷新四语种首页、归档模板与 sitemap
+  }
+
+  const dateKey = typeof body.dateKey === "string" ? body.dateKey : undefined;
+  const previousDateKey =
+    typeof body.previousDateKey === "string" ? body.previousDateKey : undefined;
+
+  const paths = collectRevalidatePaths(dateKey, previousDateKey);
+  for (const p of paths) {
+    revalidatePath(p);
+  }
+  // 同时失效所有历史归档页的路由模板，确保旧日期页的 availableDates 箭头立即解锁
+  revalidatePath("/[locale]/daily/[date]", "page");
+
+  return NextResponse.json(
+    {
+      ok: true,
+      revalidated: [...paths, "/[locale]/daily/[date]"],
+    },
+    { status: 200, headers: { "Cache-Control": "no-store" } }
+  );
+}

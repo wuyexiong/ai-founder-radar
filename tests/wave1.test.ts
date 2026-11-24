@@ -1,3 +1,4 @@
+import "./helpers/env-guard";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -5,6 +6,11 @@ import { NextRequest } from "next/server";
 import nextConfig from "../next.config";
 import { POST as subscribePost } from "../src/app/api/newsletter/subscribe/route";
 import { GET as unsubscribeGet } from "../src/app/api/newsletter/unsubscribe/route";
+import { POST as revalidatePost } from "../src/app/api/revalidate/route";
+import {
+  collectRevalidatePaths,
+  isAuthorizedRevalidateToken,
+} from "../src/lib/revalidate";
 import { middleware } from "../src/middleware";
 import {
   detectPreferredLocale,
@@ -356,4 +362,46 @@ test("daily-radar GitHub Actions workflow uses odd-minute dual cron with concurr
     yml.includes("SKIP_IF_TODAY_SYNCED:"),
     "idempotent backup skip env configured"
   );
+  assert.ok(
+    yml.includes("REVALIDATE_SECRET:"),
+    "on-demand revalidation secret passed in workflow"
+  );
+});
+
+test("on-demand revalidate API enforces secret auth and collects localized paths", async () => {
+  assert.equal(isAuthorizedRevalidateToken("Bearer my-secret", "my-secret"), true);
+  assert.equal(isAuthorizedRevalidateToken("Bearer wrong", "my-secret"), false);
+  assert.equal(isAuthorizedRevalidateToken("Basic my-secret", "my-secret"), false);
+  assert.equal(isAuthorizedRevalidateToken(null, "my-secret"), false);
+  assert.equal(isAuthorizedRevalidateToken("Bearer my-secret", ""), false);
+
+  const paths = collectRevalidatePaths("2026-11-24", "2026-11-23");
+  assert.ok(paths.includes("/en"));
+  assert.ok(paths.includes("/zh"));
+  assert.ok(paths.includes("/en/daily/2026-11-24"));
+  assert.ok(paths.includes("/zh/daily/2026-11-23"));
+  assert.ok(paths.includes("/sitemap.xml"));
+
+  const prevSecret = process.env.REVALIDATE_SECRET;
+  delete process.env.REVALIDATE_SECRET;
+  try {
+    const res503 = await revalidatePost(
+      new NextRequest("https://radar.aibuildon.com/api/revalidate", {
+        method: "POST",
+      })
+    );
+    assert.equal(res503.status, 503);
+
+    process.env.REVALIDATE_SECRET = "test-revalidate-secret-123";
+    const res401 = await revalidatePost(
+      new NextRequest("https://radar.aibuildon.com/api/revalidate", {
+        method: "POST",
+        headers: { Authorization: "Bearer invalid" },
+      })
+    );
+    assert.equal(res401.status, 401);
+  } finally {
+    if (prevSecret === undefined) delete process.env.REVALIDATE_SECRET;
+    else process.env.REVALIDATE_SECRET = prevSecret;
+  }
 });

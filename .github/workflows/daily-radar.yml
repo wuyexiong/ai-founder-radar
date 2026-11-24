@@ -45,6 +45,7 @@ jobs:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
           NEXT_PUBLIC_SITE_URL: "https://radar.aibuildon.com"
           SKIP_IF_TODAY_SYNCED: ${{ github.event_name == 'schedule' && github.event.schedule == '17 0 * * *' && 'true' || 'false' }}
         run: npm run radar:sync

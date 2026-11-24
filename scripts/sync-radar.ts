@@ -578,6 +578,16 @@ async function main() {
       `✅ 已成功同步至 Supabase PostgreSQL！（今日累计精选 ${todayAllItems.length} 条，本次新增 ${newlyDistilled.length} 条，四语种齐全）`
     );
 
+    const recentDateRows = await db
+      .select({ dateKey: dailyStats.dateKey })
+      .from(dailyStats)
+      .orderBy(desc(dailyStats.dateKey))
+      .limit(2);
+    const previousDateKey = recentDateRows.find((r) => r.dateKey !== today)?.dateKey;
+
+    // 主动触发 Vercel On-Demand Revalidation，确保首页、昨日归档页日期箭头与 sitemap 秒级生效
+    await triggerOnDemandRevalidate(today, previousDateKey);
+
     // 每日早报邮件推送（配置 RESEND_API_KEY 后自动生效，按订阅者语言发送 Top 5）
     await sendDailyNewsletterDigests({
       db,
@@ -599,6 +609,55 @@ async function main() {
 }
 
 const INDEXNOW_KEY = "8f4c2e91b7d34a60c5e81239fa047b6d";
+
+async function triggerOnDemandRevalidate(
+  dateKey: string,
+  previousDateKey?: string
+) {
+  const secret = process.env.REVALIDATE_SECRET?.trim();
+  if (!secret) {
+    console.log(
+      "ℹ️ 未配置 REVALIDATE_SECRET，跳过主动缓存刷新（线上首页将按 ISR 周期自动更新）。"
+    );
+    return;
+  }
+
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://radar.aibuildon.com"
+  ).replace(/\/$/, "");
+
+  try {
+    const res = await fetch(`${siteUrl}/api/revalidate`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ dateKey, previousDateKey }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (res.ok) {
+      console.log(
+        `⚡ 已触发线上按需缓存刷新 (${siteUrl}/api/revalidate)，首页与归档日期切换已即时生效！`
+      );
+      // 顺手预热四语种首页，确保首位访问用户即命中最新 Edge 缓存
+      const locales = ["en", "zh", "zh-TW", "ja"];
+      await Promise.allSettled(
+        locales.map((loc) =>
+          fetch(`${siteUrl}/${loc}`, {
+            method: "GET",
+            signal: AbortSignal.timeout(10_000),
+          })
+        )
+      );
+    } else {
+      console.warn(`⚠️ 主动缓存刷新返回 HTTP ${res.status}，将回退至 ISR 自动刷新。`);
+    }
+  } catch (err) {
+    console.warn("⚠️ 主动缓存刷新请求失败（不影响主流程）:", formatSafeError(err));
+  }
+}
 
 async function pingIndexNow(dateKey: string) {
   const siteUrl = (

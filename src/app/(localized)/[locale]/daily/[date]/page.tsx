@@ -9,7 +9,7 @@ import {
 import { buildRadarJsonLd, buildRadarMetadata } from "@/lib/seo";
 import { getAllAvailableDates, getRadarPayload } from "@/lib/signals-repo";
 
-export const revalidate = 3600; // 历史归档页每小时静态缓存验证
+export const revalidate = 600; // 历史归档页每 10 分钟静态验证（同步完成后由 /api/revalidate 秒级刷新）
 export const dynamicParams = true;
 
 export async function generateStaticParams() {
