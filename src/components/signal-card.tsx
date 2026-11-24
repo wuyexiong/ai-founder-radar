@@ -25,7 +25,6 @@ import {
   buildSignalPermalink,
   cn,
   formatSignalShareBrief,
-  resolveOriginalSubtitle,
   toSafeHttpUrl,
 } from "@/lib/utils";
 import type {
@@ -73,6 +72,7 @@ interface SignalCardProps {
   archivedDateHref?: string;
   hubDateHref?: string;
   onToggleBookmark: (item: SignalItem) => void;
+  onOpenDetail?: (item: SignalItem) => void;
 }
 
 export function SignalCard({
@@ -85,6 +85,7 @@ export function SignalCard({
   archivedDateHref,
   hubDateHref,
   onToggleBookmark,
+  onOpenDetail,
 }: SignalCardProps) {
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,11 +116,6 @@ export function SignalCard({
   const scoreText = item.score.toFixed(1);
   const isTopPick = item.isTopPick;
   const displaySublabel = localizeSourceSublabel(item.sourceSublabel, locale);
-  const origSubtitle = resolveOriginalSubtitle({
-    locale,
-    title: item.title,
-    titleOrig: item.titleOrig,
-  });
   const safeSourceUrl = toSafeHttpUrl(item.sourceUrl);
   const { productUrl, discussionUrl } = resolveSignalLinks({
     sourcePlatform: item.sourcePlatform,
@@ -273,16 +269,36 @@ export function SignalCard({
           >
             {item.metricsBadge}
           </span>
-          <span
+          <Link
+            href={detailHref}
             data-top-pick={isTopPick ? "true" : undefined}
-            title={
+            title={`${
               isTopPick ? dict.topPickTooltip(scoreText) : dict.scoreTooltip
-            }
+            } · ${dict.readDetail}`}
+            onClick={(e) => {
+              if (
+                !e.defaultPrevented &&
+                e.button === 0 &&
+                !e.metaKey &&
+                !e.ctrlKey &&
+                !e.shiftKey &&
+                !e.altKey
+              ) {
+                onOpenDetail?.(item);
+              }
+              trackRadarEvent("signal_detail_click", {
+                signal_id: item.id,
+                platform: item.sourcePlatform,
+                category: item.category,
+                score: item.score,
+                locale,
+              });
+            }}
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
+              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] tabular-nums transition-colors",
               isTopPick
-                ? "border-orange-200/90 bg-orange-50/85 font-bold text-orange-800 dark:border-orange-500/35 dark:bg-orange-500/15 dark:text-orange-300"
-                : "border-slate-200 bg-slate-50 font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
+                ? "border-orange-200/90 bg-orange-50/85 font-bold text-orange-800 hover:border-orange-300 hover:bg-orange-100/80 dark:border-orange-500/35 dark:bg-orange-500/15 dark:text-orange-300 dark:hover:border-orange-400/60 dark:hover:bg-orange-500/25"
+                : "border-slate-200 bg-slate-50 font-semibold text-slate-600 hover:border-blue-300 hover:bg-blue-50/70 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:border-blue-500/45 dark:hover:bg-blue-950/45 dark:hover:text-blue-300"
             )}
           >
             {isTopPick && (
@@ -292,35 +308,18 @@ export function SignalCard({
               />
             )}
             <span>{scoreText}</span>
-          </span>
+            <span className="sr-only">
+              {` — ${dict.readDetail}: ${item.title}`}
+            </span>
+          </Link>
         </div>
       </div>
 
-      {/* 第 2 层：当前语种主标题（进入站内独立详情页）+ 跨语种原名对照（英文站自动隐去重复原题） */}
+      {/* 第 2 层：当前语种单行静态主标题（不可点击，移除跨语种副标题噪音） */}
       <div className="mb-3.5">
-        <h3 className="text-[16.5px] font-semibold leading-snug">
-          <Link
-            href={detailHref}
-            title={dict.readDetail}
-            onClick={() =>
-              trackRadarEvent("signal_detail_click", {
-                signal_id: item.id,
-                platform: item.sourcePlatform,
-                category: item.category,
-                score: item.score,
-                locale,
-              })
-            }
-            className="block text-slate-900 transition-colors group-hover:text-blue-600 dark:text-slate-50 dark:group-hover:text-blue-400"
-          >
-            {item.title}
-          </Link>
+        <h3 className="text-[16.5px] font-semibold leading-snug text-slate-900 dark:text-slate-50">
+          {item.title}
         </h3>
-        {origSubtitle && (
-          <p className="mt-1 line-clamp-1 text-[12.5px] text-slate-400 dark:text-slate-500">
-            {origSubtitle}
-          </p>
-        )}
       </div>
 
       {/* 第 3 层：按分类自适应语义的商业透镜三要素（移动端全宽流式，桌面端严整双栏对齐） */}

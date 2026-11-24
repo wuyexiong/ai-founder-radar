@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { fetchViaJinaMarkdown } from "@/lib/collectors/jina";
+import { truncateAtWordBoundary } from "@/lib/utils";
 import type { SignalMetaFields, SourcePlatform } from "@/types/signal";
 
 export interface GitHubStats {
@@ -592,7 +593,7 @@ export async function fetchIndieHackers(
         );
 
         candidates.push({
-          title: `${productName}: ${blurb.slice(0, 95)}`,
+          title: `${productName}: ${truncateAtWordBoundary(blurb, 220)}`,
           summary: `${productName} — ${blurb}`.slice(0, 480),
           url: productUrl,
           sourcePlatform: "indiehackers",

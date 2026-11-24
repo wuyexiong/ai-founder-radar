@@ -382,6 +382,10 @@ describe("Card P1/P2 Evolution: Strict Green Badge, Lifecycle Age, Dual Links & 
         assert.ok(html.includes(dict.sidebar.newsletterCta));
         assert.ok(html.includes(dict.footer.githubLabel));
         assert.equal(html.includes("sponsored"), false);
+        if (locale !== "en") {
+          // Detail page preserves original English product/post subtitle (SnapInvoice) for SEO & brand lookup
+          assert.ok(html.includes("SnapInvoice"));
+        }
         if (locale === "en") {
           assert.equal(
             CJK_RE.test(html),

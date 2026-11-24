@@ -5,6 +5,7 @@ import {
   type GitHubStats,
   type RawFetchedItem,
 } from "@/lib/collectors/sources";
+import { truncateAtWordBoundary } from "@/lib/utils";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -178,7 +179,7 @@ export async function fetchTrustMrr(
           seenUrls.add(startupUrl);
 
           candidates.push({
-            title: `${startupName}: ${bodyAfterHeader.slice(0, 80)}`,
+            title: `${startupName}: ${truncateAtWordBoundary(bodyAfterHeader, 180)}`,
             summary: `${startupName} (${recencyLabel} ago on TrustMRR): ${bodyAfterHeader.slice(0, 460)}`,
             url: startupUrl,
             sourcePlatform: "trustmrr",
@@ -654,7 +655,7 @@ export async function fetchGitHubTrending(
       };
       trendingPicked.push({
         title: entry.description
-          ? `${entry.repoPath} — ${entry.description.slice(0, 95)}`
+          ? `${entry.repoPath} — ${truncateAtWordBoundary(entry.description, 220)}`
           : entry.repoPath,
         summary: `GitHub Trending Daily (${entry.langLabel}, ★ ${entry.totalStars.toLocaleString("en-US")}, +${entry.starsToday.toLocaleString("en-US")} stars today): ${
           entry.description || entry.repoPath
@@ -753,7 +754,7 @@ export async function fetchGitHubTrending(
 
       seenBreakoutLower.add(lowerUrl);
       breakoutCandidates.push({
-        title: `${repo.full_name} — ${desc.slice(0, 95)}`,
+        title: `${repo.full_name} — ${truncateAtWordBoundary(desc, 220)}`,
         summary: `7-Day Breakout Open-Source Repo (${
           repo.language ?? "AI"
         }, ★ ${stars}, License: ${licenseId || "Custom"}${

@@ -33,6 +33,13 @@ import { getCardLensLabels, getDictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
 import { trackRadarEvent } from "@/lib/analytics";
 import {
+  clearDetailReturnContext,
+  type DetailReturnContext,
+  incrementDetailReturnDepth,
+  markDetailForwardRestore,
+  readDetailReturnContext,
+} from "@/lib/radar-view-state";
+import {
   getTopicCopy,
   isValidTopicSlug,
   type TopicSlug,
@@ -91,8 +98,16 @@ export function SignalDetailView({
     Record<string, SignalItem>
   >({});
   const [copied, setCopied] = useState(false);
+  const [returnCtx, setReturnCtx] = useState<DetailReturnContext | null>(null);
   const langPickerRef = useRef<HTMLDivElement>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setReturnCtx(readDetailReturnContext());
+    const syncReturnCtx = () => setReturnCtx(readDetailReturnContext());
+    window.addEventListener("popstate", syncReturnCtx);
+    return () => window.removeEventListener("popstate", syncReturnCtx);
+  }, [item.id]);
 
   useEffect(() => {
     try {
@@ -282,6 +297,36 @@ export function SignalDetailView({
   });
 
   const issueHref = buildLocalePath(locale, item.dateKey, latestDateKey);
+  const canRestoreToIssue = Boolean(
+    returnCtx && returnCtx.pathname === issueHref
+  );
+  const resolvedIssueHref =
+    canRestoreToIssue && returnCtx ? returnCtx.returnHref : issueHref;
+
+  const handleBackToIssueClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      !canRestoreToIssue ||
+      !returnCtx ||
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      e.altKey
+    ) {
+      return;
+    }
+
+    if (returnCtx.detailDepth <= 1 && typeof window !== "undefined") {
+      e.preventDefault();
+      window.history.back();
+      return;
+    }
+
+    // 若用户在详情页连续点选了多条延伸案例（detailDepth > 1），标记前向恢复并交由 <Link scroll={false}> 直达原列表
+    markDetailForwardRestore();
+  };
+
   const isBookmarked = Boolean(savedSnapshots[item.id]);
   const scoreText = item.score.toFixed(1);
   const topicPills = (item.topics ?? []).filter((slug): slug is TopicSlug =>
@@ -303,6 +348,7 @@ export function SignalDetailView({
           <Link
             href={`/${locale}`}
             prefetch={true}
+            onClick={() => clearDetailReturnContext()}
             className="flex shrink-0 items-center gap-2.5"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-blue-600">
@@ -314,8 +360,10 @@ export function SignalDetailView({
           </Link>
 
           <Link
-            href={issueHref}
+            href={resolvedIssueHref}
             prefetch={true}
+            scroll={!canRestoreToIssue}
+            onClick={handleBackToIssueClick}
             className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-blue-600 sm:inline-flex dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
           >
             {dict.signalDetail.backToIssue(item.dateKey)}
@@ -351,6 +399,9 @@ export function SignalDetailView({
                         aria-selected={active}
                         onClick={() => {
                           persistLocaleCookie(loc);
+                          if (!active) {
+                            incrementDetailReturnDepth(item.id);
+                          }
                           setLangMenuOpen(false);
                         }}
                         className={cn(
@@ -421,13 +472,16 @@ export function SignalDetailView({
           >
             <Link
               href={`/${locale}`}
+              onClick={() => clearDetailReturnContext()}
               className="font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
             >
               {dict.hub.breadcrumbHome}
             </Link>
             <span>/</span>
             <Link
-              href={issueHref}
+              href={resolvedIssueHref}
+              scroll={!canRestoreToIssue}
+              onClick={handleBackToIssueClick}
               className="font-mono font-medium text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
             >
               {dict.signalDetail.breadcrumbDaily(item.dateKey)}
@@ -437,6 +491,15 @@ export function SignalDetailView({
               {dict.signalDetail.breadcrumbSignal}
             </span>
           </nav>
+
+          <Link
+            href={resolvedIssueHref}
+            scroll={!canRestoreToIssue}
+            onClick={handleBackToIssueClick}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 transition-colors hover:text-blue-600 sm:hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+          >
+            {dict.signalDetail.backToIssue(item.dateKey)}
+          </Link>
         </div>
       </div>
 
@@ -468,7 +531,9 @@ export function SignalDetailView({
                 </span>
               )}
               <Link
-                href={issueHref}
+                href={resolvedIssueHref}
+                scroll={!canRestoreToIssue}
+                onClick={handleBackToIssueClick}
                 className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-medium text-slate-600 hover:text-blue-600 dark:bg-slate-800 dark:text-slate-400"
               >
                 <Calendar className="h-3 w-3" />
@@ -697,6 +762,9 @@ export function SignalDetailView({
                     latestDateKey
                   )}
                   onToggleBookmark={toggleBookmark}
+                  onOpenDetail={(selected) =>
+                    incrementDetailReturnDepth(selected.id)
+                  }
                 />
               ))}
             </div>

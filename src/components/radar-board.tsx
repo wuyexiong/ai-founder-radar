@@ -46,6 +46,19 @@ import {
 import { getDictionary } from "@/i18n/dictionaries";
 import { trackRadarEvent } from "@/lib/analytics";
 import {
+  buildRadarFilterUrl,
+  clearDetailReturnContext,
+  createRadarViewId,
+  HISTORY_VIEW_ID_KEY,
+  readHistoryViewId,
+  resolveRadarViewRestoration,
+  saveDetailReturnContext,
+  saveRadarViewSnapshot,
+  type ResolvedRadarViewState,
+  type TabFilter,
+  updateRadarViewScroll,
+} from "@/lib/radar-view-state";
+import {
   formatSavedSignalsMarkdown,
   MAX_SAVED_BACKUP_BYTES,
   parseAndMergeSavedSignalsBackup,
@@ -73,8 +86,6 @@ import type {
   SourcePlatform,
 } from "@/types/signal";
 
-type TabFilter = "top" | "all" | SignalCategory | "saved";
-
 const PLATFORM_ORDER: SourcePlatform[] = [
   "producthunt",
   "hackernews",
@@ -89,6 +100,63 @@ const PLATFORM_ORDER: SourcePlatform[] = [
 const COLLAPSED_TAG_LIMIT = 10;
 const SAVED_ITEMS_STORAGE_KEY = "afr-saved-items";
 const LEGACY_BOOKMARKS_STORAGE_KEY = "indieradar-bookmarks";
+
+let hasClientHydratedOnce = false;
+
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
+function loadLocalSavedSnapshots(items: SignalItem[]): {
+  nextMap: Record<string, SignalItem>;
+  migrated: boolean;
+} {
+  const nextMap: Record<string, SignalItem> = {};
+  let migrated = false;
+  if (typeof window === "undefined") {
+    return { nextMap, migrated };
+  }
+
+  try {
+    const rawSnapshots = JSON.parse(
+      localStorage.getItem(SAVED_ITEMS_STORAGE_KEY) || "{}"
+    );
+    if (rawSnapshots && typeof rawSnapshots === "object") {
+      for (const [id, snap] of Object.entries(
+        rawSnapshots as Record<string, unknown>
+      )) {
+        const valid = sanitizeSavedSignalItem(snap);
+        if (valid && id === valid.id) {
+          nextMap[valid.id] = valid;
+        }
+      }
+    }
+
+    const legacyIds = JSON.parse(
+      localStorage.getItem(LEGACY_BOOKMARKS_STORAGE_KEY) || "[]"
+    );
+    if (Array.isArray(legacyIds)) {
+      for (const id of legacyIds) {
+        if (typeof id === "string" && !nextMap[id]) {
+          const matched = items.find((it) => it.id === id);
+          if (matched) {
+            nextMap[id] = matched;
+            migrated = true;
+          }
+        }
+      }
+    }
+
+    for (const it of items) {
+      if (nextMap[it.id]) {
+        nextMap[it.id] = it;
+      }
+    }
+  } catch {
+    // ignore invalid json or restricted storage
+  }
+
+  return { nextMap, migrated };
+}
 
 function triggerBrowserDownload(
   filename: string,
@@ -172,34 +240,71 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
       [dict]
     );
 
+  const routeKey = hub
+    ? `${locale}:${hub.kind}:${hub.slug}`
+    : `${locale}:${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
+
+  // 客户端已完成首次水合后的软路由挂载（如从 /signal/[id] 返回上一页）：首帧同步恢复筛选状态，确保零闪烁且首帧列表高度完整
+  const initialClientRestoreRef = useRef<ResolvedRadarViewState | null>(null);
+  if (
+    initialClientRestoreRef.current === null &&
+    hasClientHydratedOnce &&
+    typeof window !== "undefined"
+  ) {
+    initialClientRestoreRef.current = resolveRadarViewRestoration({
+      routeKey,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+      historyState: window.history.state,
+      defaultTab,
+      items,
+    });
+  }
+
   // 专题聚合页与每日独立归档页默认展开 "all"（确保首屏 SSR HTML 100% 输出全部卡片供搜索引擎抓取）
-  const [activeTab, setActiveTab] = useState<TabFilter>(defaultTab);
-  const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
-    null
+  const [activeTab, setActiveTab] = useState<TabFilter>(
+    () => initialClientRestoreRef.current?.activeTab ?? defaultTab
   );
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activePlatform, setActivePlatform] = useState<SourcePlatform | null>(
+    () => initialClientRestoreRef.current?.activePlatform ?? null
+  );
+  const [activeTag, setActiveTag] = useState<string | null>(
+    () => initialClientRestoreRef.current?.activeTag ?? null
+  );
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const router = useRouter();
   const [isDatePending, startDateTransition] = useTransition();
   const [optimisticDate, setOptimisticDate] = useState<string | null>(null);
-  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(
+    () => initialClientRestoreRef.current?.tagsExpanded ?? false
+  );
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [highlightedId, setHighlightedId] = useState<string | null>(
+    () => initialClientRestoreRef.current?.focusSignalId ?? null
+  );
+  const [searchQuery, setSearchQuery] = useState(
+    () => initialClientRestoreRef.current?.searchQuery ?? ""
+  );
   const [archiveSearchResults, setArchiveSearchResults] = useState<
     SignalItem[]
   >([]);
   const [completedSearchKey, setCompletedSearchKey] = useState("");
   const [savedSnapshots, setSavedSnapshots] = useState<
     Record<string, SignalItem>
-  >({});
+  >(() =>
+    hasClientHydratedOnce ? loadLocalSavedSnapshots(items).nextMap : {}
+  );
   const [savedFeedback, setSavedFeedback] = useState<{
     tone: "success" | "error";
     message: string;
   } | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>("system");
   const [themeHydrated, setThemeHydrated] = useState(false);
+  const [viewStateReady, setViewStateReady] = useState<boolean>(() =>
+    Boolean(initialClientRestoreRef.current)
+  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
@@ -208,24 +313,98 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
   const savedFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
-  const routeKey = hub
-    ? `${locale}:${hub.kind}:${hub.slug}`
-    : `${locale}:${isArchiveRoute ? "archive" : "home"}:${activeDate}`;
+  const viewIdRef = useRef<string>(
+    initialClientRestoreRef.current?.viewId ?? ""
+  );
+  const pendingScrollYRef = useRef<number | null>(
+    initialClientRestoreRef.current?.restoreScrollY ?? null
+  );
+  const pendingFocusIdRef = useRef<string | null>(
+    initialClientRestoreRef.current?.focusSignalId ?? null
+  );
+  const restoringScrollLockRef = useRef<boolean>(
+    initialClientRestoreRef.current?.restoreScrollY !== null &&
+      initialClientRestoreRef.current?.restoreScrollY !== undefined
+  );
   const prevRouteKeyRef = useRef(routeKey);
 
-  // 客户端跨专题/日期/语种软路由切换时重置筛选状态与下拉面板
-  useEffect(() => {
+  // 首次文档水合与客户端跨路由切换时：恢复/重置筛选状态与浏览滚动位置锚点
+  useIsomorphicLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const scheduleHighlightClear = (focusId: string | null) => {
+      if (!focusId) return;
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setHighlightedId(null);
+      }, 2200);
+    };
+
+    if (!hasClientHydratedOnce) {
+      hasClientHydratedOnce = true;
+      const resolved = resolveRadarViewRestoration({
+        routeKey,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+        historyState: window.history.state,
+        defaultTab,
+        items,
+      });
+      viewIdRef.current = resolved.viewId;
+      if (resolved.restored) {
+        setActiveTab(resolved.activeTab);
+        setActivePlatform(resolved.activePlatform);
+        setActiveTag(resolved.activeTag);
+        setTagsExpanded(resolved.tagsExpanded);
+        setSearchQuery(resolved.searchQuery);
+        if (resolved.focusSignalId) {
+          setHighlightedId(resolved.focusSignalId);
+          scheduleHighlightClear(resolved.focusSignalId);
+        }
+        if (resolved.restoreScrollY !== null) {
+          pendingScrollYRef.current = resolved.restoreScrollY;
+          pendingFocusIdRef.current = resolved.focusSignalId;
+          restoringScrollLockRef.current = true;
+        }
+      }
+      setViewStateReady(true);
+      return;
+    }
+
     if (prevRouteKeyRef.current !== routeKey) {
       prevRouteKeyRef.current = routeKey;
-      setActiveTab(hub || isArchiveRoute ? "all" : "top");
-      setActivePlatform(null);
-      setActiveTag(null);
-      setSearchQuery("");
       setDatePickerOpen(false);
       setLangMenuOpen(false);
       setOptimisticDate(null);
+
+      const resolved = resolveRadarViewRestoration({
+        routeKey,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+        historyState: window.history.state,
+        defaultTab,
+        items,
+      });
+      viewIdRef.current = resolved.viewId;
+      setActiveTab(resolved.activeTab);
+      setActivePlatform(resolved.activePlatform);
+      setActiveTag(resolved.activeTag);
+      setTagsExpanded(resolved.tagsExpanded);
+      setSearchQuery(resolved.searchQuery);
+      setHighlightedId(resolved.focusSignalId);
+      scheduleHighlightClear(resolved.focusSignalId);
+      pendingScrollYRef.current = resolved.restoreScrollY;
+      pendingFocusIdRef.current = resolved.focusSignalId;
+      restoringScrollLockRef.current = resolved.restoreScrollY !== null;
+      return;
     }
-  }, [routeKey, hub, isArchiveRoute]);
+
+    if (initialClientRestoreRef.current?.focusSignalId) {
+      scheduleHighlightClear(initialClientRestoreRef.current.focusSignalId);
+    }
+  }, [routeKey, defaultTab, items]);
 
   // 点击外部或按 Escape 收起归档日期下拉面板
   useEffect(() => {
@@ -316,53 +495,15 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
 
   // 初始化跨天本地收藏夹（兼容旧版 indieradar-* 存储键无缝迁移）
   useEffect(() => {
-    try {
-      const nextMap: Record<string, SignalItem> = {};
-      const rawSnapshots = JSON.parse(
-        localStorage.getItem(SAVED_ITEMS_STORAGE_KEY) || "{}"
-      );
-      if (rawSnapshots && typeof rawSnapshots === "object") {
-        for (const [id, snap] of Object.entries(
-          rawSnapshots as Record<string, unknown>
-        )) {
-          const valid = sanitizeSavedSignalItem(snap);
-          if (valid && id === valid.id) {
-            nextMap[valid.id] = valid;
-          }
-        }
-      }
-
-      // 迁移旧版仅存 ID 列表中的当日卡片
-      const legacyIds = JSON.parse(
-        localStorage.getItem(LEGACY_BOOKMARKS_STORAGE_KEY) || "[]"
-      );
-      let migrated = false;
-      if (Array.isArray(legacyIds)) {
-        for (const id of legacyIds) {
-          if (typeof id === "string" && !nextMap[id]) {
-            const matched = items.find((it) => it.id === id);
-            if (matched) {
-              nextMap[id] = matched;
-              migrated = true;
-            }
-          }
-        }
-      }
-
-      // 同步当前页已收藏卡片的最新语种快照
-      for (const it of items) {
-        if (nextMap[it.id]) {
-          nextMap[it.id] = it;
-        }
-      }
-
-      if (migrated) {
+    const { nextMap, migrated } = loadLocalSavedSnapshots(items);
+    if (migrated) {
+      try {
         localStorage.setItem(SAVED_ITEMS_STORAGE_KEY, JSON.stringify(nextMap));
+      } catch {
+        // ignore storage quota errors
       }
-      setSavedSnapshots(nextMap);
-    } catch {
-      // ignore invalid json
     }
+    setSavedSnapshots(nextMap);
 
     return () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -917,7 +1058,219 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
     locateFromHash();
     window.addEventListener("hashchange", locateFromHash);
     return () => window.removeEventListener("hashchange", locateFromHash);
-  }, [items, isHubPage, routeKey]);
+  }, [items, isHubPage, isArchiveRoute, routeKey]);
+
+  // 同步当前激活的频道/信源/切口/搜索词至 URL 查询参数与 sessionStorage 快照（不触发服务端重取）
+  useEffect(() => {
+    if (!viewStateReady || typeof window === "undefined") return;
+    if (!viewIdRef.current) {
+      viewIdRef.current = createRadarViewId();
+    }
+    const viewId = viewIdRef.current;
+
+    const currentFullHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const nextFullHref = buildRadarFilterUrl(currentFullHref, {
+      activeTab,
+      defaultTab,
+      activePlatform,
+      activeTag,
+      searchQuery,
+    });
+
+    const existingViewId = readHistoryViewId(window.history.state);
+    if (nextFullHref !== currentFullHref || existingViewId !== viewId) {
+      try {
+        // 不附加 __NA 内部键，以便 Next.js App Router 自动继承内部路由树并更新客户端 canonicalUrl
+        window.history.replaceState(
+          { [HISTORY_VIEW_ID_KEY]: viewId },
+          "",
+          nextFullHref
+        );
+      } catch {
+        // ignore history SecurityError
+      }
+    }
+
+    const parsedNext = new URL(nextFullHref, "https://radar.aibuildon.com");
+    saveRadarViewSnapshot({
+      viewId,
+      routeKey,
+      pathname: parsedNext.pathname,
+      search: parsedNext.search,
+      activeTab,
+      activePlatform,
+      activeTag,
+      tagsExpanded,
+      searchQuery,
+      scrollY: pendingScrollYRef.current ?? window.scrollY,
+      clickedSignalId: pendingFocusIdRef.current ?? null,
+    });
+  }, [
+    viewStateReady,
+    routeKey,
+    defaultTab,
+    activeTab,
+    activePlatform,
+    activeTag,
+    tagsExpanded,
+    searchQuery,
+  ]);
+
+  // 绘制前精确恢复返回前的滚动高度（兼容跨期搜索异步结果加载与视口尺寸变化降级定位）
+  useIsomorphicLayoutEffect(() => {
+    if (
+      !viewStateReady ||
+      pendingScrollYRef.current === null ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const targetY = pendingScrollYRef.current;
+    const focusId = pendingFocusIdRef.current;
+
+    const applyScroll = () => {
+      window.scrollTo({ top: targetY, left: 0, behavior: "instant" });
+    };
+
+    applyScroll();
+
+    let raf1 = 0;
+    let raf2 = 0;
+    const releaseRestoreLock = () => {
+      pendingScrollYRef.current = null;
+      pendingFocusIdRef.current = null;
+      restoringScrollLockRef.current = false;
+    };
+
+    window.addEventListener("wheel", releaseRestoreLock, {
+      passive: true,
+      once: true,
+    });
+    window.addEventListener("touchmove", releaseRestoreLock, {
+      passive: true,
+      once: true,
+    });
+
+    raf1 = window.requestAnimationFrame(() => {
+      if (pendingScrollYRef.current === null) return;
+      if (Math.abs(window.scrollY - targetY) > 2) {
+        applyScroll();
+      }
+      raf2 = window.requestAnimationFrame(() => {
+        if (pendingScrollYRef.current === null) return;
+        const maxScroll = Math.max(
+          0,
+          document.documentElement.scrollHeight - window.innerHeight
+        );
+        if (Math.abs(window.scrollY - targetY) > 2 && maxScroll >= targetY - 8) {
+          applyScroll();
+        } else if (
+          focusId &&
+          targetY > 0 &&
+          maxScroll < targetY - 40 &&
+          !isCrossSearchPending
+        ) {
+          const el = document.getElementById(focusId);
+          if (el) {
+            el.scrollIntoView({ behavior: "instant", block: "center" });
+          }
+        }
+        if (!isCrossSearchPending) {
+          releaseRestoreLock();
+        }
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+      window.removeEventListener("wheel", releaseRestoreLock);
+      window.removeEventListener("touchmove", releaseRestoreLock);
+    };
+  }, [viewStateReady, routeKey, isCrossSearchPending]);
+
+  // 被动节流记录当前列表滚动位置（保障手势回退或刷新时同样保留浏览进度）
+  useEffect(() => {
+    if (!viewStateReady || typeof window === "undefined") return;
+    let rafId = 0;
+    const onScroll = () => {
+      if (restoringScrollLockRef.current || rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        if (restoringScrollLockRef.current || !viewIdRef.current) return;
+        updateRadarViewScroll(viewIdRef.current, routeKey, window.scrollY);
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (rafId !== 0) window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [viewStateReady, routeKey]);
+
+  const handleOpenSignalDetail = (targetItem: SignalItem) => {
+    if (typeof window === "undefined") return;
+    if (!viewIdRef.current) {
+      viewIdRef.current = createRadarViewId();
+    }
+    const viewId = viewIdRef.current;
+    const currentScrollY = window.scrollY;
+    const syncedHref = buildRadarFilterUrl(
+      `${window.location.pathname}${window.location.search}`,
+      {
+        activeTab,
+        defaultTab,
+        activePlatform,
+        activeTag,
+        searchQuery,
+      }
+    );
+    const parsedUrl = new URL(syncedHref, "https://radar.aibuildon.com");
+
+    saveRadarViewSnapshot({
+      viewId,
+      routeKey,
+      pathname: parsedUrl.pathname,
+      search: parsedUrl.search,
+      activeTab,
+      activePlatform,
+      activeTag,
+      tagsExpanded,
+      searchQuery,
+      scrollY: currentScrollY,
+      clickedSignalId: targetItem.id,
+    });
+
+    saveDetailReturnContext({
+      viewId,
+      routeKey,
+      returnHref: `${parsedUrl.pathname}${parsedUrl.search}`,
+      pathname: parsedUrl.pathname,
+      signalId: targetItem.id,
+      scrollY: currentScrollY,
+      activeTab,
+      activePlatform,
+      activeTag,
+      tagsExpanded,
+      searchQuery,
+      detailDepth: 1,
+    });
+  };
+
+  const handleResetHomeNavigation = () => {
+    clearDetailReturnContext();
+    if (!isHubPage && !isArchiveRoute) {
+      setActiveTab(defaultTab);
+      setActivePlatform(null);
+      setActiveTag(null);
+      setTagsExpanded(false);
+      setSearchQuery("");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      }
+    }
+  };
 
   const buildSwitcherHref = (targetLocale: Locale) => {
     if (hub) {
@@ -938,6 +1291,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
           <Link
             href={`/${locale}`}
             prefetch={true}
+            onClick={handleResetHomeNavigation}
             className="flex items-center gap-2.5 shrink-0"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-blue-600">
@@ -1709,6 +2063,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                             : undefined
                         }
                         onToggleBookmark={toggleBookmark}
+                        onOpenDetail={handleOpenSignalDetail}
                       />
                       {idx === inlineSubscribeIdx && (
                         <div className="lg:hidden">
@@ -1803,6 +2158,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
                       activeTopicSlug={hub?.kind === "topic" ? hub.slug : null}
                       hubDateHref={`${buildLocalePath(locale, item.dateKey, latestDate)}#${encodeURIComponent(item.id)}`}
                       onToggleBookmark={toggleBookmark}
+                      onOpenDetail={handleOpenSignalDetail}
                     />
                   ))}
                 </div>

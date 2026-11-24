@@ -6,7 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PLATFORM_META, SignalCard } from "../src/components/signal-card";
 import { LOCALES } from "../src/i18n/config";
 import { getCardLensLabels, getDictionary } from "../src/i18n/dictionaries";
-import { resolveOriginalSubtitle } from "../src/lib/utils";
+import {
+  resolveOriginalSubtitle,
+  truncateAtWordBoundary,
+} from "../src/lib/utils";
 import type { SignalCategory, SignalItem } from "../src/types/signal";
 import { resetOfflineTestGuard } from "./helpers/env-guard";
 
@@ -141,6 +144,50 @@ describe("SignalCard P0+ UI & Taxonomy Guardrails", () => {
       }),
       null
     );
+
+    // Heals legacy 95-char mid-word hard slices (sentence boundary & word boundary)
+    const legacyTwoSentences =
+      "browser-use/browser-use — " +
+      "Make websites accessible for AI agents. Automate tasks online with ease and build scalable wor";
+    assert.equal(
+      resolveOriginalSubtitle({
+        locale: "zh",
+        title: "让 AI Agent 直接操控网页的开源自动化框架",
+        titleOrig: legacyTwoSentences,
+      }),
+      "browser-use/browser-use — Make websites accessible for AI agents."
+    );
+
+    const legacySingleClause =
+      "acme/mcp-gateway — " +
+      "Lightweight open-source Model Context Protocol proxy with built-in Stripe usage metering and au";
+    assert.equal(
+      resolveOriginalSubtitle({
+        locale: "zh",
+        title: "内置 Stripe 计费的 MCP 网关",
+        titleOrig: legacySingleClause,
+      }),
+      "acme/mcp-gateway — Lightweight open-source Model Context Protocol proxy with built-in Stripe usage metering…"
+    );
+
+    // truncateAtWordBoundary preserves <=220 char descriptions intact and cuts >maxChars cleanly on sentence/word boundaries
+    const intactDesc =
+      "Fast Rust gateway for LLM tool calling, rate limiting, and multi-tenant Stripe metering.";
+    assert.equal(truncateAtWordBoundary(intactDesc, 220), intactDesc);
+    assert.equal(
+      truncateAtWordBoundary(
+        "Turn messy PDFs into structured SQL tables in seconds. Built with Rust and WebAssembly for zero server cost and instant local execution.",
+        90
+      ),
+      "Turn messy PDFs into structured SQL tables in seconds."
+    );
+    assert.equal(
+      truncateAtWordBoundary(
+        "Lightweight open-source Model Context Protocol proxy with built-in Stripe usage metering and automated billing webhooks",
+        95
+      ),
+      "Lightweight open-source Model Context Protocol proxy with built-in Stripe usage metering…"
+    );
   });
 
   it("renders non-clickable static #tags, clickable rounded-full Topic Hub pills, ageBadge, in-site detail link, and dual outbound links", () => {
@@ -174,8 +221,26 @@ describe("SignalCard P0+ UI & Taxonomy Guardrails", () => {
     assert.ok(zhHtml.includes('data-top-pick="true"'));
     assert.ok(zhHtml.includes("9.1"));
 
-    // Card title links to standalone detail page /[locale]/signal/[id]
-    assert.ok(zhHtml.includes('href="/zh/signal/sig-pain-test"'));
+    // Card <h3> title is non-clickable static text, while top-right score badge carries the /[locale]/signal/[id] SEO internal link
+    const h3Match = zhHtml.match(/<h3[^>]*>([\s\S]*?)<\/h3>/);
+    assert.ok(h3Match, "Expected <h3> title in SignalCard");
+    assert.equal(
+      h3Match[1].includes("<a"),
+      false,
+      "Card <h3> title must be static non-clickable text"
+    );
+    assert.ok(
+      /<a[^>]+href="\/zh\/signal\/sig-pain-test"[^>]*data-top-pick="true"/.test(
+        zhHtml
+      ) ||
+        /<a[^>]+data-top-pick="true"[^>]+href="\/zh\/signal\/sig-pain-test"/.test(
+          zhHtml
+        ),
+      "Top-right score badge must link to standalone detail page /[locale]/signal/[id]"
+    );
+    assert.ok(zhHtml.includes("sr-only"));
+    // SignalCard suppresses cross-language origSubtitle on list cards for clean single-language scanning
+    assert.equal(zhHtml.includes(painItem.titleOrig), false);
 
     // Pain-point adaptive lens labels
     assert.ok(zhHtml.includes("😤 谁在痛："));
