@@ -317,43 +317,53 @@ function drawRadarBrandMark(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  size: number
+  size: number,
+  theme: XCardTheme
 ) {
+  const isLight = theme === "editorial_light";
   ctx.save();
-  drawRoundedRect(ctx, x, y, size, size, 10);
+  drawRoundedRect(ctx, x, y, size, size, size * 0.25);
   const grad = ctx.createLinearGradient(x, y, x + size, y + size);
-  grad.addColorStop(0, "#2563EB");
-  grad.addColorStop(1, "#1D4ED8");
+  if (isLight) {
+    grad.addColorStop(0, "#FFFFFF");
+    grad.addColorStop(1, "#ECFDF5");
+  } else {
+    grad.addColorStop(0, "#1E293B");
+    grad.addColorStop(1, "#090D16");
+  }
   ctx.fillStyle = grad;
   ctx.fill();
 
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.arc(cx, cy, size * 0.32, 0, Math.PI * 2);
+  ctx.strokeStyle = isLight ? "#6EE7B7" : "rgba(52, 211, 153, 0.48)";
+  ctx.lineWidth = Math.max(1.2, size * 0.035);
   ctx.stroke();
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-  ctx.beginPath();
-  ctx.arc(cx, cy, size * 0.19, -Math.PI * 0.65, Math.PI * 0.35);
-  ctx.stroke();
+  // Keyline Dish 双主题自适应徽标（浅色 L2 Mint Paper / 深色 F5 Obsidian）
+  const pad = size * 0.17;
+  const scale = (size - pad * 2) / 24;
+  ctx.translate(x + pad, y + pad);
+  ctx.scale(scale, scale);
 
-  // Radar sweep beam
-  ctx.strokeStyle = "#FFFFFF";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + size * 0.24, cy - size * 0.22);
-  ctx.stroke();
+  if (typeof Path2D !== "undefined") {
+    const dishPath = new Path2D(
+      "M10.4849 13.5151L15.133 18.1632C15.5289 18.5591 15.7513 19.0961 15.7513 19.656C15.7513 20.3394 15.4206 20.9805 14.8637 21.3766C13.3774 22.4327 11.5993 23.0001 9.776 23.0001C8.3374 23.0001 6.9207 22.6467 5.6506 21.971C2.7875 20.4461 0.999 17.4661 1 14.2222C1 12.3996 1.5673 10.6222 2.6232 9.1367C3.0193 8.5796 3.6605 8.2487 4.344 8.2487C4.9038 8.2487 5.4407 8.471 5.8366 8.8668L10.4849 13.5151Z"
+    );
+    ctx.fillStyle = isLight ? "#064E3B" : "#F8FAFC";
+    ctx.fill(dishPath);
 
-  // Center ping
-  ctx.fillStyle = "#34D399";
-  ctx.beginPath();
-  ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
-  ctx.fill();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = isLight ? "#2563EB" : "#60A5FA";
+    ctx.lineWidth = 2.2;
+    ctx.stroke(new Path2D("M9.7778 14.2222L12.5 11.5"));
+
+    ctx.strokeStyle = isLight ? "#10B981" : "#34D399";
+    ctx.lineWidth = 2.1;
+    ctx.stroke(
+      new Path2D(
+        "M13.1111 6.4444C15.5657 6.4444 17.5556 8.4343 17.5556 10.8889M13.1111 2C18.0203 2 22 5.9797 22 10.8889"
+      )
+    );
+  }
   ctx.restore();
 }
 
@@ -695,7 +705,7 @@ export function renderXShareCardToCanvas(
   ctx.stroke();
 
   const footerCenterY = footerTopY + footerH / 2 + 2;
-  drawRadarBrandMark(ctx, innerX, footerCenterY - 19, 38);
+  drawRadarBrandMark(ctx, innerX, footerCenterY - 19, 38, theme);
 
   const brandTextX = innerX + 52;
   ctx.font = `800 19px ${SYSTEM_SANS_FONT}`;

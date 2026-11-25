@@ -1,8 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#0F172A"/>
-  <circle cx="32" cy="32" r="20" fill="none" stroke="#3B82F6" stroke-width="3" stroke-opacity="0.35"/>
-  <circle cx="32" cy="32" r="12" fill="none" stroke="#3B82F6" stroke-width="3" stroke-opacity="0.65"/>
-  <path d="M32 32 L46 18" stroke="#34D399" stroke-width="3.5" stroke-linecap="round"/>
-  <circle cx="32" cy="32" r="4" fill="#60A5FA"/>
-  <circle cx="44" cy="20" r="3" fill="#34D399"/>
+  <defs>
+    <linearGradient id="afr-light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#ECFDF5"/>
+    </linearGradient>
+    <linearGradient id="afr-dark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#090D16"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .bg-card { fill: url(#afr-light); stroke: #6EE7B7; stroke-opacity: 1; }
+    .dish { fill: #064E3B; }
+    .needle { stroke: #2563EB; }
+    .waves { stroke: #10B981; }
+    @media (prefers-color-scheme: dark) {
+      .bg-card { fill: url(#afr-dark); stroke: #34D399; stroke-opacity: 0.45; }
+      .dish { fill: #F8FAFC; }
+      .needle { stroke: #60A5FA; }
+      .waves { stroke: #34D399; }
+    }
+  </style>
+  <rect class="bg-card" x="1" y="1" width="62" height="62" rx="15" stroke-width="2"/>
+  <g transform="translate(10.5 10.5) scale(1.79)">
+    <path class="dish" d="M10.4849 13.5151L15.133 18.1632C15.5289 18.5591 15.7513 19.0961 15.7513 19.656C15.7513 20.3394 15.4206 20.9805 14.8637 21.3766C13.3774 22.4327 11.5993 23.0001 9.776 23.0001C8.3374 23.0001 6.9207 22.6467 5.6506 21.971C2.7875 20.4461 0.999 17.4661 1 14.2222C1 12.3996 1.5673 10.6222 2.6232 9.1367C3.0193 8.5796 3.6605 8.2487 4.344 8.2487C4.9038 8.2487 5.4407 8.471 5.8366 8.8668L10.4849 13.5151Z"/>
+    <path class="needle" fill="none" stroke-linecap="round" stroke-width="2.2" d="M9.7778 14.2222L12.5 11.5"/>
+    <path class="waves" fill="none" stroke-linecap="round" stroke-width="2.1" d="M13.1111 6.4444C15.5657 6.4444 17.5556 8.4343 17.5556 10.8889M13.1111 2C18.0203 2 22 5.9797 22 10.8889"/>
+  </g>
 </svg>

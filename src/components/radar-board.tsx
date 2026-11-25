@@ -21,7 +21,6 @@ import {
   MessageSquarePlus,
   Monitor,
   Moon,
-  Radar,
   Rss,
   Search,
   Sparkles,
@@ -33,6 +32,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { BrandLogoMark } from "@/components/brand-logo-icon";
 import { FeedbackModal } from "@/components/feedback-modal";
 import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
@@ -1294,9 +1294,7 @@ export function RadarBoard({ payload }: { payload: RadarPagePayload }) {
             onClick={handleResetHomeNavigation}
             className="flex items-center gap-2.5 shrink-0"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-blue-600">
-              <Radar className="h-4 w-4" />
-            </div>
+            <BrandLogoMark className="h-8 w-8 shrink-0" />
             <div className="flex items-baseline gap-2">
               <span className="text-base font-bold tracking-tight">
                 AI Founder Radar

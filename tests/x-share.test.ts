@@ -1,8 +1,11 @@
 import "./helpers/env-guard";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { BrandLogoMark } from "../src/components/brand-logo-icon";
 import { SignalCard } from "../src/components/signal-card";
 import { SignalDetailView } from "../src/components/signal-detail-view";
 import { XShareModal } from "../src/components/x-share-modal";
@@ -379,5 +382,20 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
       assert.equal(metaWithHandle.twitter?.site, "@aifounderradar");
       assert.equal(metaWithHandle.twitter?.creator, "@aifounderradar");
     });
+
+    // Verify dual-theme BrandLogoMark & adaptive prefers-color-scheme icon.svg (L2 Mint Paper Light + F5 Obsidian Dark)
+    const iconSvg = readFileSync(
+      resolve(process.cwd(), "src/app/icon.svg"),
+      "utf8"
+    );
+    assert.ok(iconSvg.includes("@media (prefers-color-scheme: dark)"));
+    assert.ok(iconSvg.includes("#064E3B"));
+    assert.ok(iconSvg.includes("#F8FAFC"));
+
+    const brandHtml = renderToStaticMarkup(React.createElement(BrandLogoMark));
+    assert.ok(brandHtml.includes("dark:hidden"));
+    assert.ok(brandHtml.includes("hidden dark:block"));
+    assert.ok(brandHtml.includes("fill-[#064E3B] dark:fill-[#F8FAFC]"));
+    assert.equal(CJK_RE.test(brandHtml), false);
   });
 });

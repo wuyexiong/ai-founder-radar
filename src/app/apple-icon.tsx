@@ -16,43 +16,31 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#0F172A",
-          borderRadius: "36px",
-          position: "relative",
+          background: "linear-gradient(145deg, #1E293B 0%, #090D16 100%)",
+          borderRadius: "40px",
+          border: "4px solid rgba(52, 211, 153, 0.45)",
         }}
       >
-        <div
-          style={{
-            width: "120px",
-            height: "120px",
-            borderRadius: "999px",
-            border: "6px solid rgba(59, 130, 246, 0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              width: "72px",
-              height: "72px",
-              borderRadius: "999px",
-              border: "6px solid rgba(96, 165, 250, 0.7)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <div
-              style={{
-                width: "24px",
-                height: "24px",
-                borderRadius: "999px",
-                backgroundColor: "#34D399",
-              }}
-            />
-          </div>
-        </div>
+        <svg width="118" height="118" viewBox="0 0 24 24">
+          <path
+            fill="#F8FAFC"
+            d="M10.4849 13.5151L15.133 18.1632C15.5289 18.5591 15.7513 19.0961 15.7513 19.656C15.7513 20.3394 15.4206 20.9805 14.8637 21.3766C13.3774 22.4327 11.5993 23.0001 9.776 23.0001C8.3374 23.0001 6.9207 22.6467 5.6506 21.971C2.7875 20.4461 0.999 17.4661 1 14.2222C1 12.3996 1.5673 10.6222 2.6232 9.1367C3.0193 8.5796 3.6605 8.2487 4.344 8.2487C4.9038 8.2487 5.4407 8.471 5.8366 8.8668L10.4849 13.5151Z"
+          />
+          <path
+            fill="none"
+            stroke="#60A5FA"
+            strokeLinecap="round"
+            strokeWidth="2.2"
+            d="M9.7778 14.2222L12.5 11.5"
+          />
+          <path
+            fill="none"
+            stroke="#34D399"
+            strokeLinecap="round"
+            strokeWidth="2.1"
+            d="M13.1111 6.4444C15.5657 6.4444 17.5556 8.4343 17.5556 10.8889M13.1111 2C18.0203 2 22 5.9797 22 10.8889"
+          />
+        </svg>
       </div>
     ),
     { ...size }
