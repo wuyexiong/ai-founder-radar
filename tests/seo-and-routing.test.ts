@@ -516,12 +516,12 @@ describe("SEO Metadata, Sitemap/Robots, Middleware & Database URL Tools", () => 
       assert.ok(ciYml.includes("contents: read"));
       assert.ok(
         ciYml.includes(
-          "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+          "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         )
       );
       assert.ok(
         ciYml.includes(
-          "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
+          "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
         )
       );
       assert.equal(

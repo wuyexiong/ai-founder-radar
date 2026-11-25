@@ -6,7 +6,9 @@ import { NextRequest } from "next/server";
 import nextConfig from "../next.config";
 import { POST as subscribePost } from "../src/app/api/newsletter/subscribe/route";
 import { GET as unsubscribeGet } from "../src/app/api/newsletter/unsubscribe/route";
+import { GET as watchdogGet } from "../src/app/api/cron/watchdog/route";
 import { POST as revalidatePost } from "../src/app/api/revalidate/route";
+import { setDbForTests } from "../src/db";
 import {
   buildIndexNowUrlList,
   collectRevalidatePaths,
@@ -17,8 +19,11 @@ import {
   buildIncrementalSyncPlan,
   computeMergedScannedCount,
   evaluateScheduleGate,
+  getShanghaiDateKey,
   getUsPacificUtcOffsetHours,
+  HOURLY_RECONCILE_CRON,
   MORNING_BACKUP_CRON,
+  MORNING_LATE_BACKUP_CRON,
   MORNING_PRIMARY_CRON,
   US_NIGHT_PDT_CRON,
   US_NIGHT_PST_CRON,
@@ -503,26 +508,35 @@ test("security CSP header allows *.clarity.ms scripts", async () => {
   );
 });
 
-test("daily-radar GitHub Actions workflow uses odd-minute morning + DST-aware US late-night crons", () => {
+test("daily-radar GitHub Actions workflow uses hourly quota-safe reconciliation + pre-checkout gate", () => {
   const yml = readFileSync(".github/workflows/daily-radar.yml", "utf8");
-  assert.ok(yml.includes(`cron: "${MORNING_PRIMARY_CRON}"`), "primary morning cron present");
-  assert.ok(yml.includes(`cron: "${MORNING_BACKUP_CRON}"`), "backup morning cron present");
-  assert.ok(yml.includes(`cron: "${US_NIGHT_PDT_CRON}"`), "US late-night PDT cron present");
-  assert.ok(yml.includes(`cron: "${US_NIGHT_PST_CRON}"`), "US late-night PST cron present");
+  assert.ok(
+    yml.includes(`cron: "${HOURLY_RECONCILE_CRON}"`),
+    "hourly odd-minute reconciliation cron present"
+  );
   assert.ok(yml.includes("workflow_dispatch:"), "manual trigger enabled");
   assert.ok(yml.includes("group: daily-radar-sync"), "concurrency group configured");
+  assert.ok(yml.includes("runs-on: ubuntu-24.04"), "locked to ubuntu-24.04 LTS");
   assert.ok(
-    yml.includes("id: schedule_gate") && yml.includes('TZ="America/Los_Angeles" date +%z'),
-    "DST pre-checkout schedule gate configured"
+    yml.includes("id: schedule_gate") &&
+      yml.includes('TZ="Asia/Shanghai"') &&
+      yml.includes('TZ="America/Los_Angeles"') &&
+      yml.includes('/llms.txt"') &&
+      yml.includes('grep -qF "daily/${BJT_DATE}"'),
+    "pre-checkout quota-safe state reconciliation gate configured"
   );
   assert.ok(
-    yml.includes("SKIP_IF_TODAY_SYNCED:") &&
-      yml.includes("github.event.schedule == '17 0 * * *'"),
-    "idempotent skip applies strictly to morning fallback cron, not US late-night supplement"
+    yml.includes("SKIP_IF_TODAY_SYNCED: ${{ steps.schedule_gate.outputs.skip_if_synced }}"),
+    "idempotent DB skip wired from pre-checkout schedule gate"
   );
   assert.ok(
     yml.includes("REVALIDATE_SECRET:"),
     "on-demand revalidation secret passed in workflow"
+  );
+  assert.equal(
+    yml.includes("11bd71901bbe5b1630ceea73d27597364c9af683"),
+    false,
+    "deprecated Node 20 checkout action upgraded"
   );
 });
 
@@ -575,6 +589,14 @@ test("sync-schedule DST gate and incremental deduplication planner cover winter/
   assert.equal(backupGate.shouldRun, true);
   assert.equal(backupGate.isMorningBackup, true);
 
+  const lateBackupGate = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: MORNING_LATE_BACKUP_CRON,
+    now: winterQueuedLate,
+  });
+  assert.equal(lateBackupGate.shouldRun, true);
+  assert.equal(lateBackupGate.isMorningBackup, true);
+
   const primaryGate = evaluateScheduleGate({
     eventName: "schedule",
     scheduleCron: MORNING_PRIMARY_CRON,
@@ -588,6 +610,68 @@ test("sync-schedule DST gate and incremental deduplication planner cover winter/
     now: winterQueuedLate,
   });
   assert.equal(manualGate.shouldRun, true);
+
+  // 3b. Hourly quota-safe reconciliation (23 * * * *) across 24h windows
+  // Morning 07:23 BJT (23:23 UTC) -> runs primary
+  const hourlyMorningPrimary = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    now: new Date("2026-11-24T23:23:00Z"),
+  });
+  assert.equal(hourlyMorningPrimary.shouldRun, true);
+  assert.equal(hourlyMorningPrimary.isMorningBackup, false);
+
+  // Morning 08:23 BJT when site is ALREADY updated -> skips with 0 cost
+  const hourlyCatchupAlreadyLive = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    alreadyLiveOnSite: true,
+    now: new Date("2026-11-25T00:23:00Z"),
+  });
+  assert.equal(hourlyCatchupAlreadyLive.shouldRun, false);
+  assert.equal(hourlyCatchupAlreadyLive.isMorningBackup, true);
+
+  // Morning 08:23 BJT when site is MISSING today's archive -> triggers self-healing catch-up
+  const hourlyCatchupMissing = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    alreadyLiveOnSite: false,
+    now: new Date("2026-11-25T00:23:00Z"),
+  });
+  assert.equal(hourlyCatchupMissing.shouldRun, true);
+  assert.equal(hourlyCatchupMissing.isMorningBackup, true);
+
+  // US late-night 23:23 PDT (06:23 UTC in July) & 23:23 PST (07:23 UTC in Nov) -> both auto-run!
+  const hourlySummerUsNight = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    now: new Date("2026-07-15T06:23:00Z"),
+  });
+  assert.equal(hourlySummerUsNight.shouldRun, true);
+  assert.equal(hourlySummerUsNight.isUsNightSupplement, true);
+
+  const hourlyWinterUsNight = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    now: new Date("2026-11-25T07:23:00Z"),
+  });
+  assert.equal(hourlyWinterUsNight.shouldRun, true);
+  assert.equal(hourlyWinterUsNight.isUsNightSupplement, true);
+
+  // Quiet hours (e.g. 03:23 BJT or 18:23 BJT) -> strictly skipped (0 LLM cost)
+  const hourlyPredawnQuiet = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    now: new Date("2026-11-24T19:23:00Z"), // 03:23 BJT
+  });
+  assert.equal(hourlyPredawnQuiet.shouldRun, false);
+
+  const hourlyEveningQuiet = evaluateScheduleGate({
+    eventName: "schedule",
+    scheduleCron: HOURLY_RECONCILE_CRON,
+    now: new Date("2026-11-25T10:23:00Z"), // 18:23 BJT, 02:23 PST
+  });
+  assert.equal(hourlyEveningQuiet.shouldRun, false);
 
   // 4. Incremental sync plan: Morning empty state vs Afternoon supplement state
   const morningPlan = buildIncrementalSyncPlan({
@@ -726,9 +810,164 @@ test("on-demand revalidate API enforces secret auth and collects localized paths
       })
     );
     assert.equal(res401.status, 401);
+
+    const res200 = await revalidatePost(
+      new NextRequest("https://radar.aibuildon.com/api/revalidate", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-revalidate-secret-123",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          dateKey: "2026-11-25",
+          previousDateKey: "2026-11-24",
+        }),
+      })
+    );
+    assert.equal(res200.status, 200);
+    const body200 = (await res200.json()) as {
+      ok: boolean;
+      revalidated: string[];
+    };
+    assert.equal(body200.ok, true);
+    assert.ok(body200.revalidated.includes("/[locale]/signal/[id]"));
+    assert.ok(body200.revalidated.includes("/zh/daily/2026-11-25"));
   } finally {
     if (prevSecret === undefined) delete process.env.REVALIDATE_SECRET;
     else process.env.REVALIDATE_SECRET = prevSecret;
+  }
+});
+
+test("Vercel cron watchdog detects missed daily sync and auto-dispatches GitHub workflow", async () => {
+  // Verify vercel.json cron expression complies with Hobby once-per-day constraint
+  const vercelJson = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+    crons?: Array<{ path: string; schedule: string }>;
+  };
+  assert.equal(vercelJson.crons?.length, 1);
+  assert.equal(vercelJson.crons?.[0]?.path, "/api/cron/watchdog");
+  assert.match(
+    vercelJson.crons?.[0]?.schedule ?? "",
+    /^\d{1,2}\s+\d{1,2}\s+\*\s+\*\s+\*$/,
+    "Cron schedule must run strictly once per day for Vercel Hobby compatibility"
+  );
+
+  const prevEnv = {
+    CRON_SECRET: process.env.CRON_SECRET,
+    REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,
+    GITHUB_DISPATCH_TOKEN: process.env.GITHUB_DISPATCH_TOKEN,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+  };
+  delete process.env.CRON_SECRET;
+  delete process.env.REVALIDATE_SECRET;
+  delete process.env.GITHUB_DISPATCH_TOKEN;
+  delete process.env.GITHUB_REPOSITORY;
+
+  let mockedSelectedCount = 0;
+  const mockDailyStatsDb = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () =>
+            mockedSelectedCount > 0
+              ? [{ selectedCount: mockedSelectedCount }]
+              : [],
+        }),
+      }),
+    }),
+  };
+
+  try {
+    // 1. 503 when neither CRON_SECRET nor REVALIDATE_SECRET is configured
+    const unconfiguredRes = await watchdogGet(
+      new NextRequest("https://radar.aibuildon.com/api/cron/watchdog")
+    );
+    assert.equal(unconfiguredRes.status, 503);
+
+    // 2. 401 on wrong token
+    process.env.CRON_SECRET = "watchdog-cron-secret-xyz";
+    const unauthRes = await watchdogGet(
+      new NextRequest("https://radar.aibuildon.com/api/cron/watchdog", {
+        headers: { Authorization: "Bearer wrong-token" },
+      })
+    );
+    assert.equal(unauthRes.status, 401);
+
+    // 3. 200 healthy (zero GitHub API calls) when today already has >= 10 signals
+    setDbForTests(mockDailyStatsDb);
+    mockedSelectedCount = 38;
+    const healthyRes = await watchdogGet(
+      new NextRequest("https://radar.aibuildon.com/api/cron/watchdog", {
+        headers: { Authorization: "Bearer watchdog-cron-secret-xyz" },
+      })
+    );
+    assert.equal(healthyRes.status, 200);
+    const healthyJson = (await healthyRes.json()) as {
+      ok: boolean;
+      status: string;
+      dateKey: string;
+      selectedCount: number;
+      dispatched: boolean;
+    };
+    assert.equal(healthyJson.ok, true);
+    assert.equal(healthyJson.status, "healthy");
+    assert.equal(healthyJson.dateKey, getShanghaiDateKey());
+    assert.equal(healthyJson.selectedCount, 38);
+    assert.equal(healthyJson.dispatched, false);
+
+    // 4. 503 explicit alert when today is missing and GITHUB_DISPATCH_TOKEN is absent
+    mockedSelectedCount = 0;
+    const missingTokenRes = await watchdogGet(
+      new NextRequest("https://radar.aibuildon.com/api/cron/watchdog", {
+        headers: { Authorization: "Bearer watchdog-cron-secret-xyz" },
+      })
+    );
+    assert.equal(missingTokenRes.status, 503);
+    const missingTokenJson = (await missingTokenRes.json()) as {
+      ok: boolean;
+      status: string;
+      dispatched: boolean;
+    };
+    assert.equal(missingTokenJson.ok, false);
+    assert.equal(missingTokenJson.status, "stale_missing_dispatch_token");
+    assert.equal(missingTokenJson.dispatched, false);
+
+    // 5. 200 dispatched_recovery when today is missing and GITHUB_DISPATCH_TOKEN is configured
+    process.env.GITHUB_DISPATCH_TOKEN = "github_pat_mock_token_123";
+    process.env.GITHUB_REPOSITORY = "invalid/../traversal"; // SSRF/traversal guard falls back safely
+    const fetchMock = installFetchMock(() => new Response(null, { status: 204 }));
+    try {
+      const recoveryRes = await watchdogGet(
+        new NextRequest("https://radar.aibuildon.com/api/cron/watchdog", {
+          headers: { Authorization: "Bearer watchdog-cron-secret-xyz" },
+        })
+      );
+      assert.equal(recoveryRes.status, 200);
+      const recoveryJson = (await recoveryRes.json()) as {
+        ok: boolean;
+        status: string;
+        dispatched: boolean;
+        repository: string;
+      };
+      assert.equal(recoveryJson.ok, true);
+      assert.equal(recoveryJson.status, "dispatched_recovery");
+      assert.equal(recoveryJson.dispatched, true);
+      assert.equal(recoveryJson.repository, "wuyexiong/ai-founder-radar");
+      assert.equal(fetchMock.calls.length, 1);
+      assert.equal(
+        fetchMock.calls[0].url,
+        "https://api.github.com/repos/wuyexiong/ai-founder-radar/actions/workflows/daily-radar.yml/dispatches"
+      );
+      assert.equal(fetchMock.calls[0].method, "POST");
+      assert.equal(fetchMock.calls[0].bodyText, '{"ref":"main"}');
+    } finally {
+      fetchMock.restore();
+    }
+  } finally {
+    setDbForTests(null);
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 });
 

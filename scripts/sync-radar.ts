@@ -16,6 +16,8 @@ import {
   buildIncrementalSyncPlan,
   computeMergedScannedCount,
   evaluateScheduleGate,
+  getShanghaiDateKey,
+  MIN_HEALTHY_DAILY_SIGNALS,
 } from "../src/lib/sync-schedule";
 import {
   fetchAppStoreTopGrossing,
@@ -268,6 +270,8 @@ async function main() {
   const scheduleGate = evaluateScheduleGate({
     eventName: process.env.GITHUB_EVENT_NAME,
     scheduleCron: process.env.GITHUB_SCHEDULE_CRON,
+    gateApproved:
+      process.env.GITHUB_GATE_APPROVED?.trim().toLowerCase() === "true",
   });
 
   if (!backfillOnly && !enrichLocal && !scheduleGate.shouldRun) {
@@ -278,9 +282,7 @@ async function main() {
   const skipIfTodaySynced =
     process.argv.includes("--skip-if-synced") ||
     process.env.SKIP_IF_TODAY_SYNCED?.trim().toLowerCase() === "true";
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-  }).format(new Date());
+  const today = getShanghaiDateKey();
 
   const db = hasDatabaseConfigured() ? getDb() : null;
 
@@ -308,10 +310,11 @@ async function main() {
         .limit(1);
 
       const count = existingDaily[0]?.selectedCount ?? 0;
-      if (count >= 10) {
+      if (count >= MIN_HEALTHY_DAILY_SIGNALS) {
         console.log(
-          `⏭️ [AI Founder Radar] 兜底调度检测到今日 (${today}) 已成功同步 ${count} 条商业信号，直接跳过（0 抓取 / 0 LLM 消耗）。`
+          `⏭️ [AI Founder Radar] 兜底调度检测到今日 (${today}) 已成功同步 ${count} 条商业信号，补刷线上缓存后直接跳过（0 抓取 / 0 LLM 消耗）。`
         );
+        await triggerOnDemandRevalidate(today);
         process.exit(0);
       }
       console.log(

@@ -41,14 +41,19 @@ export async function POST(request: NextRequest) {
 
   const paths = collectRevalidatePaths(dateKey, previousDateKey);
   clearSignalsRepoMemoryCache();
-  revalidateTag(SIGNALS_CORPUS_CACHE_TAG);
-  for (const p of paths) {
-    revalidatePath(p);
+  try {
+    revalidateTag(SIGNALS_CORPUS_CACHE_TAG);
+    for (const p of paths) {
+      revalidatePath(p);
+    }
+    // 同时失效所有历史归档页、单条信号详情页与程序化 SEO 专题模板，确保新信号与日期状态立即生效
+    revalidatePath("/[locale]/daily/[date]", "page");
+    revalidatePath("/[locale]/topic/[tag]", "page");
+    revalidatePath("/[locale]/source/[platform]", "page");
+    revalidatePath("/[locale]/signal/[id]", "page");
+  } catch {
+    // 兼容非 Next.js Server 增量缓存环境（如离线集成单测）
   }
-  // 同时失效所有历史归档页与程序化 SEO 专题模板，确保新信号与日期箭头立即生效
-  revalidatePath("/[locale]/daily/[date]", "page");
-  revalidatePath("/[locale]/topic/[tag]", "page");
-  revalidatePath("/[locale]/source/[platform]", "page");
 
   return NextResponse.json(
     {
@@ -59,6 +64,7 @@ export async function POST(request: NextRequest) {
         "/[locale]/daily/[date]",
         "/[locale]/topic/[tag]",
         "/[locale]/source/[platform]",
+        "/[locale]/signal/[id]",
       ],
     },
     { status: 200, headers: { "Cache-Control": "no-store" } }

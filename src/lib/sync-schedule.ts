@@ -1,7 +1,28 @@
+export const HOURLY_RECONCILE_CRON = "23 * * * *";
 export const MORNING_PRIMARY_CRON = "23 23 * * *";
 export const MORNING_BACKUP_CRON = "17 0 * * *";
+export const MORNING_LATE_BACKUP_CRON = "13 1 * * *";
 export const US_NIGHT_PDT_CRON = "33 6 * * *";
 export const US_NIGHT_PST_CRON = "33 7 * * *";
+export const MORNING_CATCHUP_BJT_HOURS = [8, 9, 10] as const;
+export const MIN_HEALTHY_DAILY_SIGNALS = 10;
+
+export function getShanghaiDateKey(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+  }).format(date);
+}
+
+export function getZonedHour(timeZone: string, date: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const raw = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed % 24 : 0;
+}
 
 export interface ScheduleGateDecision {
   shouldRun: boolean;
@@ -33,20 +54,91 @@ export function getUsPacificUtcOffsetHours(date: Date = new Date()): -7 | -8 {
 }
 
 /**
- * Evaluates whether a scheduled GitHub Actions cron invocation should run,
- * ensuring the US late-night supplement fires once per day around 23:33~23:50 PT
- * across both PDT (UTC-7) and PST (UTC-8) without crossing midnight reset twice.
+ * Evaluates whether a scheduled GitHub Actions cron invocation should run:
+ * - Supports hourly state-reconciliation (`23 * * * *`) with strict quota protection:
+ *   1) 07:xx Asia/Shanghai -> primary morning edition
+ *   2) 23:xx America/Los_Angeles -> US late-night incremental supplement (auto-DST)
+ *   3) 08/09/10 Asia/Shanghai -> bounded morning self-healing catch-up (skips if site/DB already live)
+ *   4) All other hours -> 0-cost immediate skip
+ * - Also preserves deterministic evaluation for explicit legacy cron slots.
  */
 export function evaluateScheduleGate(params: {
   eventName?: string;
   scheduleCron?: string;
+  gateApproved?: boolean;
+  alreadyLiveOnSite?: boolean;
   now?: Date;
 }): ScheduleGateDecision {
+  const now = params.now ?? new Date();
   const eventName = (params.eventName ?? "").trim();
   const scheduleCron = (params.scheduleCron ?? "").trim();
-  const usPacificOffsetHours = getUsPacificUtcOffsetHours(params.now);
+  const usPacificOffsetHours = getUsPacificUtcOffsetHours(now);
 
   if (eventName === "schedule") {
+    if (params.gateApproved) {
+      return {
+        shouldRun: true,
+        reason: `已通过前置门禁放行 (${scheduleCron || HOURLY_RECONCILE_CRON})`,
+        usPacificOffsetHours,
+        isUsNightSupplement: getZonedHour("America/Los_Angeles", now) === 23,
+        isMorningBackup: false,
+      };
+    }
+
+    if (scheduleCron === HOURLY_RECONCILE_CRON) {
+      const bjtHour = getZonedHour("Asia/Shanghai", now);
+      const ptHour = getZonedHour("America/Los_Angeles", now);
+
+      if (bjtHour === 7) {
+        return {
+          shouldRun: true,
+          reason: "命中早盘主发刊窗口 (BJT 07:23)",
+          usPacificOffsetHours,
+          isUsNightSupplement: false,
+          isMorningBackup: false,
+        };
+      }
+
+      if (ptHour === 23) {
+        return {
+          shouldRun: true,
+          reason: `命中美西深夜收官增量补采窗口 (23:23 PT, UTC${usPacificOffsetHours})`,
+          usPacificOffsetHours,
+          isUsNightSupplement: true,
+          isMorningBackup: false,
+        };
+      }
+
+      if (
+        (MORNING_CATCHUP_BJT_HOURS as readonly number[]).includes(bjtHour)
+      ) {
+        if (params.alreadyLiveOnSite) {
+          return {
+            shouldRun: false,
+            reason: `线上今日归档已就绪 (BJT ${bjtHour}:23)，0 消耗直接跳过`,
+            usPacificOffsetHours,
+            isUsNightSupplement: false,
+            isMorningBackup: true,
+          };
+        }
+        return {
+          shouldRun: true,
+          reason: `命中早盘自愈兜底窗口 (BJT ${bjtHour}:23)，启动幂等补跑检查`,
+          usPacificOffsetHours,
+          isUsNightSupplement: false,
+          isMorningBackup: true,
+        };
+      }
+
+      return {
+        shouldRun: false,
+        reason: `非发刊静默小时 (BJT ${bjtHour}:23, PT ${ptHour}:23)，0 消耗跳过`,
+        usPacificOffsetHours,
+        isUsNightSupplement: false,
+        isMorningBackup: false,
+      };
+    }
+
     if (scheduleCron === US_NIGHT_PDT_CRON) {
       if (usPacificOffsetHours === -7) {
         return {
@@ -89,10 +181,13 @@ export function evaluateScheduleGate(params: {
       };
     }
 
-    if (scheduleCron === MORNING_BACKUP_CRON) {
+    if (
+      scheduleCron === MORNING_BACKUP_CRON ||
+      scheduleCron === MORNING_LATE_BACKUP_CRON
+    ) {
       return {
         shouldRun: true,
-        reason: "早盘兜底防丢包调度 (17 0 * * *)",
+        reason: `早盘兜底防丢包调度 (${scheduleCron})`,
         usPacificOffsetHours,
         isUsNightSupplement: false,
         isMorningBackup: true,
@@ -104,7 +199,7 @@ export function evaluateScheduleGate(params: {
     shouldRun: true,
     reason:
       eventName === "schedule"
-        ? `常规主调度 (${scheduleCron || MORNING_PRIMARY_CRON})`
+        ? `常规主调度 (${scheduleCron || HOURLY_RECONCILE_CRON})`
         : "手动或本地直接触发同步",
     usPacificOffsetHours,
     isUsNightSupplement: false,
