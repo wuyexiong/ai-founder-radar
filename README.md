@@ -12,7 +12,7 @@
 
   <p>
     <a href="https://radar.aibuildon.com"><img src="https://img.shields.io/badge/Live-radar.aibuildon.com-2563EB?style=flat-square&logo=vercel" alt="Live Site" /></a>
-    <a href="https://github.com/wuyexiong/ai-founder-radar/actions/workflows/daily-radar.yml"><img src="https://img.shields.io/github/actions/workflow/status/wuyexiong/ai-founder-radar/daily-radar.yml?branch=main&style=flat-square&label=Daily%20Sync" alt="Daily Radar Sync" /></a>
+    <a href="https://github.com/wuyexiong/ai-founder-radar/actions/workflows/radar-cron.yml"><img src="https://img.shields.io/github/actions/workflow/status/wuyexiong/ai-founder-radar/radar-cron.yml?branch=main&style=flat-square&label=Daily%20Sync" alt="Daily Radar Sync" /></a>
     <img src="https://img.shields.io/badge/Next.js-15.5-000000?style=flat-square&logo=next.js" alt="Next.js 15" />
     <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase" />
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-64748B?style=flat-square" alt="MIT License" /></a>
@@ -127,7 +127,7 @@ npm run radar:backfill  # Backfill missing en / zh-TW / ja fields for historical
 | `REDDIT_CLIENT_ID` / `SECRET` | GitHub Actions / Local | No | Optional Reddit OAuth credentials (defaults to zero-auth mirror feed) |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Vercel | No | Optional PostHog / `NEXT_PUBLIC_GA_ID` / `NEXT_PUBLIC_CLARITY_ID` analytics |
 
-> **Automated Daily Updates**: Add `DATABASE_URL` and `GEMINI_API_KEY` to your repository's **Settings → Secrets and variables → Actions**. [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) runs automatically twice daily at `07:23 UTC+8` and `23:33 America/Los_Angeles` (DST-aware).
+> **Automated Daily Updates**: Add `DATABASE_URL` and `GEMINI_API_KEY` to your repository's **Settings → Secrets and variables → Actions**. [`.github/workflows/radar-cron.yml`](./.github/workflows/radar-cron.yml) runs automatically twice daily at `07:23 UTC+8` and `23:23 America/Los_Angeles` (DST-aware, backed by hourly quota-safe reconciliation & Vercel Cron watchdog).
 
 ---
 

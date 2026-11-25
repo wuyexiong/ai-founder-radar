@@ -16,7 +16,7 @@ import {
 
 const DEFAULT_GITHUB_REPOSITORY = "wuyexiong/ai-founder-radar";
 const GITHUB_REPO_RE = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
-const WORKFLOW_FILE = "daily-radar.yml";
+const WORKFLOW_FILE = "radar-cron.yml";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 function resolveAuthorizedWatchdogRequest(authHeader: string | null): {
@@ -91,7 +91,11 @@ async function handleWatchdog(request: NextRequest) {
     );
   }
 
-  if (selectedCount >= MIN_HEALTHY_DAILY_SIGNALS) {
+  const isDryRunDispatch =
+    request.nextUrl.searchParams.get("dryRun") === "1" ||
+    request.nextUrl.searchParams.get("dryRun") === "true";
+
+  if (selectedCount >= MIN_HEALTHY_DAILY_SIGNALS && !isDryRunDispatch) {
     clearSignalsRepoMemoryCache();
     try {
       revalidateTag(SIGNALS_CORPUS_CACHE_TAG);
@@ -131,6 +135,9 @@ async function handleWatchdog(request: NextRequest) {
 
   const repo = resolveSafeGitHubRepo();
   const dispatchUrl = `https://api.github.com/repos/${repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`;
+  const dispatchPayload = isDryRunDispatch
+    ? { ref: "main", inputs: { reconcile_only: "true" } }
+    : { ref: "main" };
 
   try {
     const res = await fetch(dispatchUrl, {
@@ -142,7 +149,7 @@ async function handleWatchdog(request: NextRequest) {
         "Content-Type": "application/json",
         "User-Agent": "ai-founder-radar-watchdog",
       },
-      body: JSON.stringify({ ref: "main" }),
+      body: JSON.stringify(dispatchPayload),
       signal: AbortSignal.timeout(10_000),
     });
 

@@ -12,7 +12,7 @@
 
   <p>
     <a href="https://radar.aibuildon.com"><img src="https://img.shields.io/badge/Live-radar.aibuildon.com-2563EB?style=flat-square&logo=vercel" alt="在线预览" /></a>
-    <a href="https://github.com/wuyexiong/ai-founder-radar/actions/workflows/daily-radar.yml"><img src="https://img.shields.io/github/actions/workflow/status/wuyexiong/ai-founder-radar/daily-radar.yml?branch=main&style=flat-square&label=Daily%20Sync" alt="每日自动同步状态" /></a>
+    <a href="https://github.com/wuyexiong/ai-founder-radar/actions/workflows/radar-cron.yml"><img src="https://img.shields.io/github/actions/workflow/status/wuyexiong/ai-founder-radar/radar-cron.yml?branch=main&style=flat-square&label=Daily%20Sync" alt="每日自动同步状态" /></a>
     <img src="https://img.shields.io/badge/Next.js-15.5-000000?style=flat-square&logo=next.js" alt="Next.js 15" />
     <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase" />
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-64748B?style=flat-square" alt="MIT License" /></a>
@@ -127,7 +127,7 @@ npm run radar:backfill  # 为数据库早期历史记录自动补全英 / 繁 / 
 | `REDDIT_CLIENT_ID` / `SECRET` | GitHub Actions / 本地 | 否 | 可选 Reddit 官方 OAuth 凭据（留空默认走免认证实时镜像源） |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Vercel | 否 | 按需开启 PostHog / `NEXT_PUBLIC_GA_ID` / `NEXT_PUBLIC_CLARITY_ID` 埋点 |
 
-> **开启云端无人值守更新**：在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加 `DATABASE_URL` 和 `GEMINI_API_KEY` 即可激活 [`.github/workflows/daily-radar.yml`](./.github/workflows/daily-radar.yml) 每日双时段（北京时间早 `07:23` + 美西深夜 `23:33 PT` 冬夏令时自适应）自动采集。
+> **开启云端无人值守更新**：在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加 `DATABASE_URL` 和 `GEMINI_API_KEY` 即可激活 [`.github/workflows/radar-cron.yml`](./.github/workflows/radar-cron.yml) 每日双时段（北京时间早 `07:23` + 美西深夜 `23:23 PT` 冬夏令时自适应，配合每小时轻量状态对账与 Vercel 巡检兜底）自动采集。
 
 ---
 

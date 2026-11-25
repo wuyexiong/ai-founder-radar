@@ -1,12 +1,5 @@
 name: Daily AI Founder Radar Sync
 
-permissions:
-  contents: read
-
-concurrency:
-  group: daily-radar-sync
-  cancel-in-progress: false
-
 on:
   schedule:
     # 对齐成熟开源实践（yetone/magpie 同款单条奇数分钟每小时轻量对账，保护 Gemini 额度 0 额外消耗）：
@@ -14,8 +7,21 @@ on:
     # - 北京时间 08:23 / 09:23 / 10:23：Checkout 前 0.5s 检查线上 llms.txt 是否已含今日归档，已就绪则直接秒退（不拉代码、不启 Node、0 Token），仅在早盘漏跑时自动自愈补跑；
     # - 美西时间 23:23 PT（夏令时 14:23 BJT / 冬令时 15:23 BJT）：放行美西深夜收官增量补采（每日第 2 次，自动排除今日已入库 URL 与 App Store 静态榜）；
     # - 其余所有小时（00~06 点、11~23 点非美西 23 PT）：0.01s 直接静默跳过。
-    - cron: "23 * * * *"
+    - cron: '23 * * * *'
   workflow_dispatch:
+    inputs:
+      reconcile_only:
+        description: 'Set true to run 0.5s pre-checkout health check only (0 scraping / 0 Gemini cost)'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-radar-sync
+  cancel-in-progress: false
 
 jobs:
   sync-signals:
@@ -27,6 +33,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           SCHEDULE_EXPR: ${{ github.event.schedule }}
+          RECONCILE_ONLY: ${{ github.event.inputs.reconcile_only }}
           SITE_URL: "https://radar.aibuildon.com"
         run: |
           set -euo pipefail
@@ -34,7 +41,18 @@ jobs:
           BJT_HOUR=$(TZ="Asia/Shanghai" date +%-H)
           PT_HOUR=$(TZ="America/Los_Angeles" date +%-H)
           PT_OFFSET=$(TZ="America/Los_Angeles" date +%z)
-          echo "Event=${EVENT_NAME}, Schedule=${SCHEDULE_EXPR:-manual}, BJT=${BJT_DATE} ${BJT_HOUR}:00, America/Los_Angeles=${PT_HOUR}:00 (${PT_OFFSET})"
+          echo "Event=${EVENT_NAME}, Schedule=${SCHEDULE_EXPR:-manual}, ReconcileOnly=${RECONCILE_ONLY:-false}, BJT=${BJT_DATE} ${BJT_HOUR}:00, America/Los_Angeles=${PT_HOUR}:00 (${PT_OFFSET})"
+
+          if [ "${RECONCILE_ONLY:-false}" = "true" ]; then
+            if BODY=$(curl -fsS --retry 2 --max-time 10 "${SITE_URL}/llms.txt" 2>/dev/null) && printf '%s' "$BODY" | grep -qF "daily/${BJT_DATE}"; then
+              echo "✅ [Dry-Run 对账] 线上站点已包含今日 (${BJT_DATE}) 归档，调度链路验证通过（0 克隆 / 0 Token）。"
+            else
+              echo "ℹ️ [Dry-Run 对账] 线上站点尚未包含今日 (${BJT_DATE}) 归档（仅演练模式，跳过抓取）。"
+            fi
+            echo "run_sync=false" >> "$GITHUB_OUTPUT"
+            echo "skip_if_synced=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "$EVENT_NAME" != "schedule" ]; then
             echo "▶️ 手动/API 触发 (${EVENT_NAME})，放行执行同步。"

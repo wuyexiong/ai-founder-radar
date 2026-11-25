@@ -508,10 +508,10 @@ test("security CSP header allows *.clarity.ms scripts", async () => {
   );
 });
 
-test("daily-radar GitHub Actions workflow uses hourly quota-safe reconciliation + pre-checkout gate", () => {
-  const yml = readFileSync(".github/workflows/daily-radar.yml", "utf8");
+test("radar-cron GitHub Actions workflow uses hourly quota-safe reconciliation + pre-checkout gate", () => {
+  const yml = readFileSync(".github/workflows/radar-cron.yml", "utf8");
   assert.ok(
-    yml.includes(`cron: "${HOURLY_RECONCILE_CRON}"`),
+    yml.includes(`cron: '${HOURLY_RECONCILE_CRON}'`),
     "hourly odd-minute reconciliation cron present"
   );
   assert.ok(yml.includes("workflow_dispatch:"), "manual trigger enabled");
@@ -955,7 +955,7 @@ test("Vercel cron watchdog detects missed daily sync and auto-dispatches GitHub 
       assert.equal(fetchMock.calls.length, 1);
       assert.equal(
         fetchMock.calls[0].url,
-        "https://api.github.com/repos/wuyexiong/ai-founder-radar/actions/workflows/daily-radar.yml/dispatches"
+        "https://api.github.com/repos/wuyexiong/ai-founder-radar/actions/workflows/radar-cron.yml/dispatches"
       );
       assert.equal(fetchMock.calls[0].method, "POST");
       assert.equal(fetchMock.calls[0].bodyText, '{"ref":"main"}');
