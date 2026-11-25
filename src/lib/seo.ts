@@ -7,7 +7,15 @@ import {
 } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 import { toSafeHttpUrl } from "@/lib/utils";
+import { getConfiguredXHandle } from "@/lib/x-share";
 import type { DailyOverview, SignalItem } from "@/types/signal";
+
+function buildTwitterAttribution(): { site?: string; creator?: string } {
+  const handle = getConfiguredXHandle();
+  if (!handle) return {};
+  const tag = `@${handle}`;
+  return { site: tag, creator: tag };
+}
 
 interface BuildSeoParams {
   locale: Locale;
@@ -85,6 +93,7 @@ export function buildRadarMetadata({
       title,
       description,
       images: [ogImagePath],
+      ...buildTwitterAttribution(),
     },
     robots: {
       index: true,
@@ -216,6 +225,7 @@ export function buildSignalDetailMetadata({
       title,
       description,
       images: [ogImagePath],
+      ...buildTwitterAttribution(),
     },
     robots: {
       index: true,
@@ -387,6 +397,7 @@ export function buildHubMetadata({
       title: seoTitle,
       description: richDescription,
       images: [ogImagePath],
+      ...buildTwitterAttribution(),
     },
     robots: {
       index: items.length > 0,

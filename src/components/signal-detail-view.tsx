@@ -22,6 +22,7 @@ import {
 import { FeedbackModal } from "@/components/feedback-modal";
 import { NewsletterSubscribeCard } from "@/components/newsletter-subscribe-card";
 import { PLATFORM_META, SignalCard } from "@/components/signal-card";
+import { XBrandIcon, XShareModal } from "@/components/x-share-modal";
 import {
   buildLocalePath,
   LOCALE_COOKIE,
@@ -94,6 +95,7 @@ export function SignalDetailView({
   const [themeHydrated, setThemeHydrated] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [shareXOpen, setShareXOpen] = useState(false);
   const [savedSnapshots, setSavedSnapshots] = useState<
     Record<string, SignalItem>
   >({});
@@ -701,6 +703,25 @@ export function SignalDetailView({
 
             <button
               type="button"
+              onClick={() => {
+                setShareXOpen(true);
+                trackRadarEvent("signal_share_x", {
+                  signal_id: item.id,
+                  platform: item.sourcePlatform,
+                  category: item.category,
+                  locale,
+                  action: "open_studio",
+                  placement: "detail",
+                });
+              }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-900 bg-slate-900 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer dark:border-slate-100 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            >
+              <XBrandIcon className="h-3.5 w-3.5" />
+              <span>{dict.signalDetail.shareXCta}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleCopyShareBrief}
               className={cn(
                 "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-xs font-medium transition-colors cursor-pointer",
@@ -863,6 +884,16 @@ export function SignalDetailView({
         locale={locale}
         dict={dict.feedback}
       />
+
+      {shareXOpen && (
+        <XShareModal
+          open={shareXOpen}
+          onClose={() => setShareXOpen(false)}
+          item={item}
+          locale={locale}
+          placement="detail"
+        />
+      )}
     </div>
   );
 }

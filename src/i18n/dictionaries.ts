@@ -1,5 +1,6 @@
 import type { Locale } from "@/i18n/config";
 import type { FeedbackType } from "@/lib/feedback";
+import type { XShareMode } from "@/lib/x-share";
 import type { IndieToolItem, SignalCategory } from "@/types/signal";
 
 export interface CardLensLabels {
@@ -83,6 +84,8 @@ export interface Dictionary {
     copyBrief: string;
     copiedBrief: string;
     copyBriefTooltip: string;
+    shareX: string;
+    shareXTooltip: string;
     shareLinkLabel: string;
     filterByTag: (tag: string) => string;
     saved: string;
@@ -92,6 +95,32 @@ export interface Dictionary {
     readDetail: string;
     archivedFrom: (date: string) => string;
   };
+  xShare: {
+    modalTitle: string;
+    modalSubtitle: string;
+    closeCta: string;
+    cardPreviewLabel: string;
+    themeDark: string;
+    themeLight: string;
+    copyImageCta: string;
+    copiedImageCta: string;
+    downloadedFallbackCta: string;
+    downloadImageCta: string;
+    imageHint: string;
+    modes: Record<XShareMode, { label: string; badge: string; tip: string }>;
+    editorLabel: string;
+    resetDraftCta: string;
+    noLinkSafeBadge: string;
+    utmTrackedBadge: string;
+    freeLimitOk: (weighted: number) => string;
+    longPostNote: (weighted: number) => string;
+    overQuickLimitNote: (weighted: number) => string;
+    copyTextCta: string;
+    copiedTextCta: string;
+    postOnXCta: string;
+    nextStepReplyHint: string;
+    nextStepReplyCta: string;
+  };
   signalDetail: {
     breadcrumbDaily: (date: string) => string;
     breadcrumbSignal: string;
@@ -99,6 +128,7 @@ export interface Dictionary {
     visitProductCta: string;
     viewOriginalCta: string;
     copyShareCta: string;
+    shareXCta: string;
     relatedHeading: string;
     relatedSubnote: string;
   };
@@ -298,6 +328,8 @@ const EN_DICT: Dictionary = {
     copyBrief: "Copy",
     copiedBrief: "Copied",
     copyBriefTooltip: "Copy 3-point brief & permanent share link",
+    shareX: "Share to X",
+    shareXTooltip: "Open X Share Studio (16:9 card PNG + anti-throttle templates)",
     shareLinkLabel: "🔗 Signal & Source:",
     filterByTag: (tag) => `Filter current list by ${tag}`,
     saved: "Saved",
@@ -307,6 +339,50 @@ const EN_DICT: Dictionary = {
     readDetail: "Full Breakdown",
     archivedFrom: (date) => `Saved from ${date}`,
   },
+  xShare: {
+    modalTitle: "Share to X Studio",
+    modalSubtitle:
+      "Built for X reach & site growth: post a native 16:9 card with zero links in Post 1, then drop the tracked breakdown link in Reply 2.",
+    closeCta: "Close",
+    cardPreviewLabel: "16:9 Native X Card Preview",
+    themeDark: "Dark Terminal",
+    themeLight: "Editorial Light",
+    copyImageCta: "Copy PNG (Paste in X)",
+    copiedImageCta: "Copied — Paste with ⌘/Ctrl+V",
+    downloadedFallbackCta: "Saved PNG (Clipboard restricted)",
+    downloadImageCta: "Download PNG",
+    imageHint:
+      "1200×675 @2x Retina · Brand watermark included so screenshots carry your domain.",
+    modes: {
+      no_link_post: {
+        label: "1. Main Post",
+        badge: "No Link",
+        tip: "Avoids X link throttling: paste the 16:9 card image with this hook post first, then reply with Tab 2.",
+      },
+      reply_cta: {
+        label: "2. Self-Reply",
+        badge: "Site Traffic",
+        tip: "Drop this as your first reply under Post 1: links directly to the standalone signal breakdown with UTM tracking.",
+      },
+      quick_intent: {
+        label: "Quick Post",
+        badge: "≤280 Chars",
+        tip: "Fits X's 280-char free tier with the standalone detail link so X renders the dedicated summary card automatically.",
+      },
+    },
+    editorLabel: "Editable X Post Copy",
+    resetDraftCta: "Reset template",
+    noLinkSafeBadge: "No external link (reach-safe)",
+    utmTrackedBadge: "UTM tracked link",
+    freeLimitOk: (weighted) => `${weighted} / 280`,
+    longPostNote: (weighted) => `${weighted} / 280 (X Premium long post)`,
+    overQuickLimitNote: (weighted) => `${weighted} / 280 (over free limit)`,
+    copyTextCta: "Copy Text",
+    copiedTextCta: "Copied",
+    postOnXCta: "Open X Composer",
+    nextStepReplyHint: "Post 1 ready — next, copy the self-reply link to drive site traffic:",
+    nextStepReplyCta: "Switch to 2. Self-Reply →",
+  },
   signalDetail: {
     breadcrumbDaily: (date) => `${date} Briefing`,
     breadcrumbSignal: "Signal Analysis",
@@ -314,6 +390,7 @@ const EN_DICT: Dictionary = {
     visitProductCta: "Visit Product Website",
     viewOriginalCta: "Read Original Post",
     copyShareCta: "Copy Brief & Link",
+    shareXCta: "Share on X",
     relatedHeading: "Related High-Signal Cases",
     relatedSubnote:
       "Cross-referenced from the AI Founder Radar archive by niche & monetization model",
@@ -570,7 +647,9 @@ const ZH_DICT: Dictionary = {
     },
     copyBrief: "复制",
     copiedBrief: "已复制",
-    copyBriefTooltip: "一键复制三要素摘要与分享锚点链接",
+    copyBriefTooltip: "一键复制三要素摘要与独立详情链接",
+    shareX: "分享到 X",
+    shareXTooltip: "打开 X 分享工作台（16:9 信息卡片图 + 防限流双楼模板）",
     shareLinkLabel: "🔗 详情与原帖：",
     filterByTag: (tag) => `按 ${tag} 筛选本页信号`,
     saved: "已收藏",
@@ -580,6 +659,50 @@ const ZH_DICT: Dictionary = {
     readDetail: "查看拆解详情",
     archivedFrom: (date) => `收藏自 ${date}`,
   },
+  xShare: {
+    modalTitle: "X 分享工作台",
+    modalSubtitle:
+      "兼顾 X 涨粉与网站回流：1 楼发无外链主帖 + 16:9 高清卡片图拿满算法曝光，2 楼评论区挂独立详情链承接转化。",
+    closeCta: "关闭",
+    cardPreviewLabel: "16:9 原生信息卡片图预览",
+    themeDark: "暗色终端风",
+    themeLight: "浅色研报风",
+    copyImageCta: "复制图片（去 X 直接粘贴）",
+    copiedImageCta: "已复制图片，去 X 按 ⌘/Ctrl+V 粘贴",
+    downloadedFallbackCta: "已自动下载 PNG（当前浏览器限制图片剪贴板）",
+    downloadImageCta: "下载 PNG",
+    imageHint:
+      "1200×675 @2x 高清无裁切比例 · 底部内置品牌域名水印，二次转图也能带来自然曝光。",
+    modes: {
+      no_link_post: {
+        label: "1. 主帖无链",
+        badge: "防限流",
+        tip: "X 算法对首帖外链降权：先发本条 Hook 文案 + 粘贴左侧卡片图，发完点下方切到「2. 评论引流」自评挂链。",
+      },
+      reply_cta: {
+        label: "2. 评论引流",
+        badge: "网站回流",
+        tip: "作为 1 楼的第一条回复发出：链接直达单卡独立详情页（含 UTM 归因、产品官网、原帖与早报订阅）。",
+      },
+      quick_intent: {
+        label: "280字直发",
+        badge: "含预览卡",
+        tip: "按 X 真实权重（中文=2/英文=1/链接=23）自动压进 280 字符内，链接自动展开单卡专属大预览图。",
+      },
+    },
+    editorLabel: "可微调编辑 X 文案",
+    resetDraftCta: "恢复默认模板",
+    noLinkSafeBadge: "无外链 · 防限流",
+    utmTrackedBadge: "含 UTM 归因链接",
+    freeLimitOk: (weighted) => `${weighted} / 280`,
+    longPostNote: (weighted) => `${weighted} / 280（适合 X Premium 长推或微调精简）`,
+    overQuickLimitNote: (weighted) => `${weighted} / 280（超出免费版 280 上限）`,
+    copyTextCta: "复制文案",
+    copiedTextCta: "已复制",
+    postOnXCta: "打开 X 发帖",
+    nextStepReplyHint: "1 楼主帖已就绪，下一步切到 2 楼复制评论区引流链：",
+    nextStepReplyCta: "去复制 2 楼引流回复 →",
+  },
   signalDetail: {
     breadcrumbDaily: (date) => `${date} 日报`,
     breadcrumbSignal: "信号拆解详情",
@@ -587,6 +710,7 @@ const ZH_DICT: Dictionary = {
     visitProductCta: "直达产品官网",
     viewOriginalCta: "查看一手原帖",
     copyShareCta: "复制三要素与链接",
+    shareXCta: "分享到 X",
     relatedHeading: "同赛道延伸高分案例",
     relatedSubnote: "按相同商业赛道与变现切口交叉匹配的历史精选信号",
   },
@@ -836,7 +960,9 @@ const ZH_TW_DICT: Dictionary = {
     },
     copyBrief: "複製",
     copiedBrief: "已複製",
-    copyBriefTooltip: "一鍵複製三要素摘要與分享連結",
+    copyBriefTooltip: "一鍵複製三要素摘要與獨立詳情連結",
+    shareX: "分享到 X",
+    shareXTooltip: "開啟 X 分享工作台（16:9 資訊卡片圖 + 防限流雙樓模板）",
     shareLinkLabel: "🔗 詳情與原帖：",
     filterByTag: (tag) => `按 ${tag} 篩選本頁信號`,
     saved: "已收藏",
@@ -846,6 +972,50 @@ const ZH_TW_DICT: Dictionary = {
     readDetail: "檢視拆解詳情",
     archivedFrom: (date) => `收藏自 ${date}`,
   },
+  xShare: {
+    modalTitle: "X 分享工作台",
+    modalSubtitle:
+      "兼顧 X 漲粉與網站回流：1 樓發無外鏈主帖 + 16:9 高清卡片圖拿滿演算法曝光，2 樓留言區掛獨立詳情鏈承接轉化。",
+    closeCta: "關閉",
+    cardPreviewLabel: "16:9 原生資訊卡片圖預覽",
+    themeDark: "暗色終端風",
+    themeLight: "淺色研報風",
+    copyImageCta: "複製圖片（去 X 直接貼上）",
+    copiedImageCta: "已複製圖片，去 X 按 ⌘/Ctrl+V 貼上",
+    downloadedFallbackCta: "已自動下載 PNG（瀏覽器限制圖片剪貼簿）",
+    downloadImageCta: "下載 PNG",
+    imageHint:
+      "1200×675 @2x 高清無裁切比例 · 底部內建品牌網域浮水印，轉圖分享也能持續曝光。",
+    modes: {
+      no_link_post: {
+        label: "1. 主帖無鏈",
+        badge: "防限流",
+        tip: "X 演算法對首帖外鏈降權：先發本則 Hook 文案 + 貼上左側卡片圖，發完切至「2. 留言引流」自評掛鏈。",
+      },
+      reply_cta: {
+        label: "2. 留言引流",
+        badge: "網站回流",
+        tip: "作為 1 樓的第一則回覆發出：連結直達單卡獨立詳情頁（含 UTM 歸因、官網、原帖與早報訂閱）。",
+      },
+      quick_intent: {
+        label: "280字直發",
+        badge: "含預覽卡",
+        tip: "依 X 真實權重（中文=2/英文=1/連結=23）自動壓進 280 字元內，自動展開單卡專屬大預覽圖。",
+      },
+    },
+    editorLabel: "可微調編輯 X 文案",
+    resetDraftCta: "恢復預設模板",
+    noLinkSafeBadge: "無外鏈 · 防限流",
+    utmTrackedBadge: "含 UTM 歸因連結",
+    freeLimitOk: (weighted) => `${weighted} / 280`,
+    longPostNote: (weighted) => `${weighted} / 280（適合 X Premium 長文或微調精簡）`,
+    overQuickLimitNote: (weighted) => `${weighted} / 280（超出免費版 280 上限）`,
+    copyTextCta: "複製文案",
+    copiedTextCta: "已複製",
+    postOnXCta: "開啟 X 發帖",
+    nextStepReplyHint: "1 樓主帖已就緒，下一步切到 2 樓複製留言區引流鏈：",
+    nextStepReplyCta: "去複製 2 樓引流回覆 →",
+  },
   signalDetail: {
     breadcrumbDaily: (date) => `${date} 日報`,
     breadcrumbSignal: "信號拆解詳情",
@@ -853,6 +1023,7 @@ const ZH_TW_DICT: Dictionary = {
     visitProductCta: "直達產品官網",
     viewOriginalCta: "檢視一手原帖",
     copyShareCta: "複製三要素與連結",
+    shareXCta: "分享到 X",
     relatedHeading: "同賽道延伸高分案例",
     relatedSubnote: "按相同商業賽道與變現切角交叉匹配的歷史精選信號",
   },
@@ -1102,7 +1273,9 @@ const JA_DICT: Dictionary = {
     },
     copyBrief: "コピー",
     copiedBrief: "コピー済",
-    copyBriefTooltip: "3行要約とパーマリンクをコピー",
+    copyBriefTooltip: "3行要約と詳細ページURLをコピー",
+    shareX: "X でシェア",
+    shareXTooltip: "X シェアスタジオを開く（16:9 カード画像 + インプレッション最適化テンプレ）",
     shareLinkLabel: "🔗 詳細・元記事：",
     filterByTag: (tag) => `${tag} でこのページを絞り込む`,
     saved: "保存済み",
@@ -1112,6 +1285,50 @@ const JA_DICT: Dictionary = {
     readDetail: "詳細分析を見る",
     archivedFrom: (date) => `${date} の保存`,
   },
+  xShare: {
+    modalTitle: "X シェアスタジオ",
+    modalSubtitle:
+      "Xの伸びとサイト流入を両立：1投稿目は外部リンクなし＋16:9カード画像で露出を最大化し、リプ欄で詳細ページへ誘導します。",
+    closeCta: "閉じる",
+    cardPreviewLabel: "16:9 X用カード画像プレビュー",
+    themeDark: "ダーク端末",
+    themeLight: "ライト記事",
+    copyImageCta: "画像をコピー（Xにそのまま貼付）",
+    copiedImageCta: "コピー完了 — Xで ⌘/Ctrl+V 貼付",
+    downloadedFallbackCta: "PNGを保存しました（クリップボード制限）",
+    downloadImageCta: "PNG を保存",
+    imageHint:
+      "1200×675 @2x 高解像度・トリミングなし · サイト名ウォーターマーク付きで転載時にも露出します。",
+    modes: {
+      no_link_post: {
+        label: "1. 本投稿",
+        badge: "リンクなし",
+        tip: "Xの外部リンク制限を回避：まず左のカード画像を添えて本投稿を出し、続けて「2. リプ誘導」を返信欄へ。",
+      },
+      reply_cta: {
+        label: "2. リプ誘導",
+        badge: "サイト流入",
+        tip: "1投稿目のリプライとして投稿：UTM計測付きの単独詳細ページ（公式サイト・一次情報・メルマガ）へ直結します。",
+      },
+      quick_intent: {
+        label: "280字即投稿",
+        badge: "カード付き",
+        tip: "Xの重み付け（全角=2/半角=1/URL=23）で280文字以内に自動調整し、専用OGカード付きで即投稿できます。",
+      },
+    },
+    editorLabel: "投稿テキスト（編集可能）",
+    resetDraftCta: "テンプレに戻す",
+    noLinkSafeBadge: "外部リンクなし・露出安全",
+    utmTrackedBadge: "UTM 計測リンク付き",
+    freeLimitOk: (weighted) => `${weighted} / 280`,
+    longPostNote: (weighted) => `${weighted} / 280（X Premium 長文向け・または短縮調整）`,
+    overQuickLimitNote: (weighted) => `${weighted} / 280（無料枠280を超過）`,
+    copyTextCta: "本文をコピー",
+    copiedTextCta: "コピー済",
+    postOnXCta: "X 投稿画面を開く",
+    nextStepReplyHint: "1投稿目の準備完了 — 続いてリプ欄の誘導リンクをコピー：",
+    nextStepReplyCta: "2. リプ誘導へ切替 →",
+  },
   signalDetail: {
     breadcrumbDaily: (date) => `${date} 号`,
     breadcrumbSignal: "シグナル詳細分析",
@@ -1119,6 +1336,7 @@ const JA_DICT: Dictionary = {
     visitProductCta: "公式サイトを開く",
     viewOriginalCta: "一次情報（元記事）を見る",
     copyShareCta: "要約とリンクをコピー",
+    shareXCta: "X でシェア",
     relatedHeading: "関連する高スコア事例",
     relatedSubnote: "同じニッチ領域・収益モデルから抽出した厳選シグナル",
   },

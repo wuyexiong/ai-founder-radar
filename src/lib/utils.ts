@@ -91,11 +91,23 @@ export function buildSignalDetailUrl(params: {
   locale: Locale;
   signalId: string;
   utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
 }): string {
   const base = params.siteUrl.trim().replace(/\/$/, "");
-  const query = params.utmSource?.trim()
-    ? `?utm_source=${encodeURIComponent(params.utmSource.trim())}`
-    : "";
+  const queryParts: string[] = [];
+  if (params.utmSource?.trim()) {
+    queryParts.push(`utm_source=${encodeURIComponent(params.utmSource.trim())}`);
+  }
+  if (params.utmMedium?.trim()) {
+    queryParts.push(`utm_medium=${encodeURIComponent(params.utmMedium.trim())}`);
+  }
+  if (params.utmCampaign?.trim()) {
+    queryParts.push(
+      `utm_campaign=${encodeURIComponent(params.utmCampaign.trim())}`
+    );
+  }
+  const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
   return `${base}/${params.locale}/signal/${encodeURIComponent(params.signalId)}${query}`;
 }
 

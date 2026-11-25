@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Flame,
 } from "lucide-react";
+import { XBrandIcon, XShareModal } from "@/components/x-share-modal";
 import { type Locale } from "@/i18n/config";
 import { getCardLensLabels, type Dictionary } from "@/i18n/dictionaries";
 import { localizeSourceSublabel } from "@/lib/localize-sublabel";
@@ -22,7 +23,7 @@ import {
 } from "@/lib/seo-taxonomy";
 import { resolveSignalLinks } from "@/lib/signal-meta";
 import {
-  buildSignalPermalink,
+  buildSignalDetailUrl,
   cn,
   formatSignalShareBrief,
   toSafeHttpUrl,
@@ -88,6 +89,7 @@ export function SignalCard({
   onOpenDetail,
 }: SignalCardProps) {
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -145,10 +147,9 @@ export function SignalCard({
         ? window.location.origin
         : "https://radar.aibuildon.com");
 
-    const permalink = buildSignalPermalink({
+    const permalink = buildSignalDetailUrl({
       siteUrl: origin,
       locale,
-      dateKey: item.dateKey,
       signalId: item.id,
       utmSource: "share_brief",
     });
@@ -425,6 +426,26 @@ export function SignalCard({
         <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
+            onClick={() => {
+              setShareOpen(true);
+              trackRadarEvent("signal_share_x", {
+                signal_id: item.id,
+                platform: item.sourcePlatform,
+                category: item.category,
+                locale,
+                action: "open_studio",
+                placement: "card",
+              });
+            }}
+            aria-label={dict.shareXTooltip}
+            title={dict.shareXTooltip}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 cursor-pointer dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <XBrandIcon className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
             onClick={handleCopyBrief}
             aria-label={copied ? dict.copiedBrief : dict.copyBriefTooltip}
             title={copied ? dict.copiedBrief : dict.copyBriefTooltip}
@@ -528,6 +549,16 @@ export function SignalCard({
           )}
         </div>
       </div>
+
+      {shareOpen && (
+        <XShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          item={item}
+          locale={locale}
+          placement="card"
+        />
+      )}
     </article>
   );
 }
