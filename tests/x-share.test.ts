@@ -17,14 +17,21 @@ import {
   getSignalDetailPayload,
 } from "../src/lib/signals-repo";
 import { buildSignalDetailUrl } from "../src/lib/utils";
-import { wrapTextLines } from "../src/lib/x-card-canvas";
+import {
+  renderXShareCardToCanvas,
+  stripEditorialEmojis,
+  wrapTextLines,
+} from "../src/lib/x-card-canvas";
 import {
   buildXIntentUrl,
   buildXShareBundle,
   containsHttpUrl,
   formatXHashtags,
   measureXTextWeight,
+  neutralizeBareDomainsForX,
   normalizeXHandle,
+  resolveSignalOriginInfo,
+  stripShareIcons,
   truncateToXWeight,
   X_FREE_CHAR_LIMIT,
   X_URL_WEIGHT,
@@ -33,6 +40,8 @@ import type { SignalCategory, SignalItem } from "../src/types/signal";
 import { resetOfflineTestGuard, withEnv } from "./helpers/env-guard";
 
 const CJK_RE = /[\u4e00-\u9fff\u3040-\u30ff]/;
+const BARE_DOMAIN_LEAK_RE =
+  /\b[A-Za-z0-9-]+\.(?:com|io|ai|app|dev|co|net|org|sh|so|xyz)\b/i;
 const ALL_CATEGORIES: SignalCategory[] = [
   "revenue",
   "launch",
@@ -104,6 +113,8 @@ function createLongSampleItem(
       sourcePlatform: "trustmrr",
       sourceSublabel: "TrustMRR 認証済",
       sourceUrl: "https://trustmrr.com/startup/podnotes",
+      productUrl: "https://podnotes.app",
+      discussionUrl: "https://trustmrr.com/startup/podnotes",
       publishedAt: "2026-11-25T07:30:00+08:00",
     };
   }
@@ -137,6 +148,8 @@ function createLongSampleItem(
     sourcePlatform: "trustmrr",
     sourceSublabel: "TrustMRR 实名榜",
     sourceUrl: "https://trustmrr.com/startup/podnotes",
+    productUrl: "https://podnotes.app",
+    discussionUrl: "https://trustmrr.com/startup/podnotes",
     publishedAt: "2026-11-25T07:30:00+08:00",
   };
 }
@@ -152,13 +165,19 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
     resetOfflineTestGuard();
   });
 
-  it("normalizes X handles safely and rejects invalid characters", () => {
+  it("normalizes X handles safely and neutralizes bare domains for reach-safe posts", () => {
     assert.equal(normalizeXHandle("@aifounderradar"), "aifounderradar");
     assert.equal(normalizeXHandle("  @@Founder_01  "), "Founder_01");
     assert.equal(normalizeXHandle(""), null);
     assert.equal(normalizeXHandle("@bad handle"), null);
     assert.equal(normalizeXHandle("@way_too_long_handle_123"), null);
     assert.equal(normalizeXHandle("javascript:alert(1)"), null);
+
+    // Bare domains become middle-dot safe while numbers & code tokens remain intact
+    assert.equal(
+      neutralizeBareDomainsForX("https://www.podnotes.app and Cal.com hit $14.2k with Node.js & /products.json"),
+      "podnotes·app and Cal·com hit $14.2k with Node.js & /products.json"
+    );
   });
 
   it("measures X weighted length accurately (ASCII=1, CJK/Emoji=2, URL=23) and truncates cleanly", () => {
@@ -196,7 +215,9 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
     assert.ok(cutZh.endsWith("…"));
   });
 
-  it("generates anti-throttle Post 1 (zero URLs), UTM-tracked Reply 2, and <=280 Quick Post across all 4 locales & 4 categories with zero EN CJK leaks", () => {
+  it("generates icon-free reach-safe Post 1 (with product/source context & zero URLs), full-link Reply 2, and <=280 Quick Post across all 4 locales & 4 categories", () => {
+    const PICTO_ICON_RE = /\p{Extended_Pictographic}/u;
+
     for (const locale of LOCALES) {
       const dict = getDictionary(locale);
 
@@ -211,38 +232,84 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
           xHandle: "@aifounderradar",
         });
 
-        // 1. no_link_post MUST contain zero HTTP URLs (anti-throttle invariant)
+        // 0. Zero emoji icons across ALL 3 copied drafts, and NO "英文原题 / Original post" line
+        for (const [modeName, text] of Object.entries(bundle.drafts)) {
+          assert.equal(
+            PICTO_ICON_RE.test(text),
+            false,
+            `Emoji icon leaked into ${locale}/${category} (${modeName}): ${text}`
+          );
+        }
+        assert.equal(bundle.drafts.no_link_post.includes("英文原题"), false);
+        assert.equal(bundle.drafts.no_link_post.includes("英文原題"), false);
+        assert.equal(bundle.drafts.no_link_post.includes("原題："), false);
+        assert.equal(bundle.drafts.no_link_post.includes("Original post:"), false);
+
+        // 1. no_link_post MUST contain zero HTTP URLs AND zero bare domains (anti-throttle invariant)
         assert.equal(
           containsHttpUrl(bundle.drafts.no_link_post),
           false,
           `no_link_post must not contain links (${locale}/${category})`
         );
-        assert.ok(bundle.drafts.no_link_post.includes(lens.whatItIs));
-        assert.ok(bundle.drafts.no_link_post.includes(lens.monetization));
-        assert.ok(bundle.drafts.no_link_post.includes(lens.playbook));
-
-        // Metrics badge is already in title for these samples -> must not duplicate "[ $14.2k MRR ]"
-        const badgeCount =
-          bundle.drafts.no_link_post.split("$14.2k MRR").length - 1;
         assert.equal(
-          badgeCount,
-          1,
-          `Duplicate metricsBadge detected in ${locale}/${category} hook`
+          BARE_DOMAIN_LEAK_RE.test(bundle.drafts.no_link_post),
+          false,
+          `no_link_post leaked t.co bare domain (${locale}/${category}): ${bundle.drafts.no_link_post}`
+        );
+        assert.ok(bundle.drafts.no_link_post.includes(stripShareIcons(lens.whatItIs)));
+        assert.ok(
+          bundle.drafts.no_link_post.includes(stripShareIcons(lens.monetization))
+        );
+        assert.ok(bundle.drafts.no_link_post.includes(stripShareIcons(lens.playbook)));
+
+        // Product & source provenance MUST be visible in Post 1 so readers never wonder what product is discussed
+        assert.ok(
+          bundle.drafts.no_link_post.includes("podnotes·app"),
+          `Post 1 missing product anchor in ${locale}/${category}: ${bundle.drafts.no_link_post}`
+        );
+        assert.ok(
+          bundle.drafts.no_link_post.includes("TrustMRR"),
+          `Post 1 missing source platform in ${locale}/${category}`
         );
 
-        // 2. reply_cta MUST point to standalone /signal/[id] with utm_source=x_reply
+        // Hook headline (first line) must not duplicate "[ $14.2k MRR ]" when already in title
+        const hookLine = bundle.drafts.no_link_post.split("\n")[0] ?? "";
+        const hookBadgeCount = hookLine.split("$14.2k MRR").length - 1;
+        assert.equal(
+          hookBadgeCount,
+          1,
+          `Duplicate metricsBadge detected in ${locale}/${category} hook: ${hookLine}`
+        );
+
+        // 2. reply_cta MUST include direct productUrl, original discussionUrl, AND UTM-tracked Radar breakdown URL
         assert.equal(containsHttpUrl(bundle.drafts.reply_cta), true);
+        assert.ok(bundle.drafts.reply_cta.includes("https://podnotes.app"));
+        assert.ok(
+          bundle.drafts.reply_cta.includes("https://trustmrr.com/startup/podnotes")
+        );
         assert.ok(
           bundle.drafts.reply_cta.includes(
             `https://radar.aibuildon.com/${locale}/signal/${item.id}?utm_source=x_reply&utm_medium=social&utm_campaign=card_share`
           )
         );
+        assert.ok(
+          measureXTextWeight(bundle.drafts.reply_cta).weighted <= X_FREE_CHAR_LIMIT,
+          `reply_cta exceeded 280 weighted chars (${locale}/${category})`
+        );
 
-        // 3. quick_intent MUST strictly fit <= 280 X weighted chars, include detail URL & via @handle
+        // 3. quick_intent MUST strictly fit <= 280 X weighted chars AND include product name + productUrl + discussionUrl + directUrl + via @handle
         const quickMetrics = measureXTextWeight(bundle.drafts.quick_intent);
         assert.ok(
           quickMetrics.weighted <= X_FREE_CHAR_LIMIT,
           `quick_intent overflowed 280 (${quickMetrics.weighted}) for ${locale}/${category}: ${bundle.drafts.quick_intent}`
+        );
+        assert.ok(
+          bundle.drafts.quick_intent.toLowerCase().includes("podnotes"),
+          `quick_intent missing product identifier (${locale}/${category})`
+        );
+        assert.ok(bundle.drafts.quick_intent.includes("https://podnotes.app"));
+        assert.ok(
+          bundle.drafts.quick_intent.includes("https://trustmrr.com/startup/podnotes")
         );
         assert.ok(
           bundle.drafts.quick_intent.includes(
@@ -286,12 +353,162 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
     );
   });
 
-  it("wraps mixed CJK and English Canvas lines cleanly within maxLines with ellipsis", () => {
+  it("extracts GitHub owner/repo slugs and Reddit pain-point original threads cleanly across locales", () => {
+    const ghItem: SignalItem = {
+      id: "sig-gh-scrapemark",
+      dateKey: "2026-11-26",
+      title: "开源网页转结构化 Markdown 提取引擎，24 小时狂揽 1,400 Star",
+      titleZh: "开源网页转结构化 Markdown 提取引擎，24 小时狂揽 1,400 Star",
+      titleOrig:
+        "Scrapemark — Fast, LLM-ready web page to clean Markdown & JSON schema extractor",
+      category: "ai_trend",
+      whatItIs: "解决 AI Agent 读网页被广告栏污染上下文的轻量开源清洗库。",
+      businessSignal: "MIT 协议；可封装垂直行业数据清洗 API。",
+      indieTakeaway: "针对房产或外贸黄页做专用提取 API。",
+      metricsBadge: "★ 6.8k (+1,400 今日)",
+      metricType: "heat",
+      tags: ["#GitHub飙升", "#AI基建"],
+      score: 8.8,
+      isTopPick: true,
+      sourcePlatform: "github",
+      sourceSublabel: "GitHub Trending",
+      sourceUrl: "https://github.com/acme-ai/scrapemark",
+      productUrl: "https://scrapemark.dev",
+      discussionUrl: "https://github.com/acme-ai/scrapemark",
+      publishedAt: "2026-11-26T06:00:00+08:00",
+    };
+
+    const zhDict = getDictionary("zh");
+    const ghBundle = buildXShareBundle({
+      item: ghItem,
+      locale: "zh",
+      lens: getCardLensLabels(zhDict.card, "ai_trend"),
+      siteUrl: "https://radar.aibuildon.com",
+    });
+
+    assert.equal(ghBundle.origin.subjectName, "acme-ai/scrapemark");
+    assert.ok(
+      ghBundle.drafts.no_link_post.includes(
+        "开源项目：acme-ai/scrapemark（scrapemark·dev）"
+      )
+    );
+    assert.equal(ghBundle.drafts.no_link_post.includes("英文原题"), false);
+    assert.equal(containsHttpUrl(ghBundle.drafts.no_link_post), false);
+    assert.ok(
+      ghBundle.drafts.reply_cta.includes(
+        "开源仓库：https://github.com/acme-ai/scrapemark"
+      )
+    );
+    assert.ok(
+      ghBundle.drafts.reply_cta.includes("原产品官网：https://scrapemark.dev")
+    );
+    assert.ok(
+      ghBundle.drafts.quick_intent.startsWith(
+        "[★ 6.8k (+1,400 今日)] acme-ai/scrapemark · "
+      )
+    );
+    assert.ok(
+      measureXTextWeight(ghBundle.drafts.quick_intent).weighted <= X_FREE_CHAR_LIMIT
+    );
+
+    // App Store item with colon in app name & developer in parentheses: strips developer suffix & omits 英文原题
+    const appStoreItem: SignalItem = {
+      id: "sig-app-mirror",
+      dateKey: "2026-11-26",
+      title: "Screen Mirroring App：智能电视投屏工具稳居美区畅销榜",
+      titleZh: "Screen Mirroring App：智能电视投屏工具稳居美区畅销榜",
+      titleOrig: "Screen Mirroring App: Smart TV (Desidari Holding Ltd.)",
+      category: "revenue",
+      whatItIs: "手机一键无线投屏到各品牌智能电视。",
+      businessSignal: "周订阅 + 年订阅内购变现。",
+      indieTakeaway: "硬件周边刚需高频搜索词依然能跑出稳定内购。",
+      metricsBadge: "US Tools #18",
+      metricType: "revenue",
+      tags: ["#iOS出海", "#工具App"],
+      score: 8.6,
+      isTopPick: true,
+      sourcePlatform: "appstore",
+      sourceSublabel: "US Utilities #18",
+      sourceUrl: "https://apps.apple.com/us/app/screen-mirroring/id123456789",
+      publishedAt: "2026-11-26T05:30:00+08:00",
+    };
+    const appOrigin = resolveSignalOriginInfo(appStoreItem, "zh");
+    assert.equal(appOrigin.subjectName, "Screen Mirroring App: Smart TV");
+    const appBundle = buildXShareBundle({
+      item: appStoreItem,
+      locale: "zh",
+      lens: getCardLensLabels(zhDict.card, "revenue"),
+      siteUrl: "https://radar.aibuildon.com",
+    });
+    assert.ok(
+      appBundle.drafts.no_link_post.includes(
+        "原产品：Screen Mirroring App: Smart TV（信源：App Store · 美区工具畅销 #18）"
+      )
+    );
+    assert.equal(
+      appBundle.drafts.no_link_post.includes("Desidari Holding Ltd."),
+      false
+    );
+
+    // Unnamed Reddit pain-point thread in EN: includes subreddit provenance with zero icons
+    const painEnItem: SignalItem = {
+      id: "sig-pain-calendly",
+      dateKey: "2026-11-26",
+      title:
+        "Build a Lightweight Flat-Rate Booking Widget to Undercut Calendly's Per-Seat Tax",
+      titleZh: "小商家急求一次性买断的轻量预约组件",
+      titleOrig:
+        "Is there a lightweight booking widget for local service businesses that doesn't charge $16/seat/month?",
+      category: "pain_point",
+      whatItIs: "Local service shops need a fast, flat-fee booking widget.",
+      businessSignal: "186+ comments demanding a $49-$99 buyout with SMS reminders.",
+      indieTakeaway: "Strip enterprise bloat and charge flat with anti-no-show deposits.",
+      metricsBadge: "💬 186 Pain Points",
+      metricType: "pain",
+      tags: ["#SaaSAlternative", "#IndieHacker"],
+      score: 9.1,
+      isTopPick: true,
+      sourcePlatform: "reddit",
+      sourceSublabel: "r/SomebodyMakeThis",
+      sourceUrl: "https://www.reddit.com/r/SomebodyMakeThis/comments/1abcxyz/booking/",
+      publishedAt: "2026-11-26T05:00:00+08:00",
+    };
+
+    const enDict = getDictionary("en");
+    const painBundle = buildXShareBundle({
+      item: painEnItem,
+      locale: "en",
+      lens: getCardLensLabels(enDict.card, "pain_point"),
+      siteUrl: "https://radar.aibuildon.com",
+    });
+
+    assert.equal(painBundle.origin.subjectName, null);
+    assert.ok(
+      painBundle.drafts.no_link_post.includes(
+        "Source: Reddit · r/SomebodyMakeThis"
+      )
+    );
+    assert.ok(
+      painBundle.drafts.reply_cta.includes(
+        "Original (Reddit): https://www.reddit.com/r/SomebodyMakeThis/comments/1abcxyz/booking/"
+      )
+    );
+    assert.equal(CJK_RE.test(painBundle.drafts.no_link_post), false);
+    assert.equal(CJK_RE.test(painBundle.drafts.reply_cta), false);
+    assert.equal(CJK_RE.test(painBundle.drafts.quick_intent), false);
+  });
+
+  it("wraps mixed CJK and English Canvas lines cleanly and renders emoji-free editorial 16:9 Canvas card across themes", () => {
     const fakeMeasure = (s: string) =>
       Array.from(s).reduce(
         (acc, ch) => acc + (/[\u3040-\u9fff]/.test(ch) ? 20 : 10),
         0
       );
+
+    assert.equal(
+      stripEditorialEmojis("🧩 痛点场景：🔥 186 💬 评论 ★ 6.8k"),
+      "痛点场景： 186 评论 ★ 6.8k"
+    );
 
     const enLines = wrapTextLines(
       "Podcast show notes generator hits $14.2k MRR via programmatic SEO tools",
@@ -312,6 +529,83 @@ describe("X Share Studio: Copy Engine, 280-Char Weighting, Canvas Wrapping & UI 
     assert.equal(zhLines.length, 2);
     assert.ok(zhLines.every((l) => fakeMeasure(l) <= 240));
     assert.ok(zhLines[1]!.endsWith("…"));
+
+    const PICTO_EMOJI_RE = /\p{Extended_Pictographic}/u;
+    let radialGradientCalls = 0;
+
+    for (const theme of ["terminal_dark", "editorial_light"] as const) {
+      const drawnTexts: string[] = [];
+      const fakeCtx = {
+        save: () => undefined,
+        restore: () => undefined,
+        scale: () => undefined,
+        translate: () => undefined,
+        beginPath: () => undefined,
+        moveTo: () => undefined,
+        lineTo: () => undefined,
+        arcTo: () => undefined,
+        arc: () => undefined,
+        closePath: () => undefined,
+        fill: () => undefined,
+        stroke: () => undefined,
+        clip: () => undefined,
+        fillRect: () => undefined,
+        strokeRect: () => undefined,
+        createRadialGradient: () => {
+          radialGradientCalls += 1;
+          return { addColorStop: () => undefined };
+        },
+        createLinearGradient: () => ({ addColorStop: () => undefined }),
+        measureText: (s: string) => ({ width: fakeMeasure(s) * 0.7 }),
+        fillText: (s: string) => {
+          drawnTexts.push(s);
+        },
+        font: "",
+        fillStyle: "",
+        strokeStyle: "",
+        lineWidth: 1,
+        lineCap: "butt",
+        textBaseline: "middle",
+      };
+      const fakeCanvas = {
+        width: 0,
+        height: 0,
+        getContext: () => fakeCtx,
+      } as unknown as HTMLCanvasElement;
+
+      const zhItem = createLongSampleItem("zh", "revenue");
+      const zhDict = getDictionary("zh");
+
+      renderXShareCardToCanvas(fakeCanvas, {
+        item: zhItem,
+        locale: "zh",
+        platformLabel: "TrustMRR",
+        categoryLabel: zhDict.card.categories.revenue,
+        lens: getCardLensLabels(zhDict.card, "revenue"),
+        theme,
+        siteHost: "radar.aibuildon.com",
+        xHandle: "aifounderradar",
+      });
+
+      // Zero neon radial glow blobs
+      assert.equal(radialGradientCalls, 0);
+      // Hero metric + product domain + 01/02 editorial columns rendered, without redundant origTitle line
+      assert.ok(drawnTexts.includes("$14.2k MRR"));
+      assert.ok(
+        drawnTexts.some((t) => t.includes("podnotes.app")),
+        `Canvas failed to render product domain (${theme}): ${drawnTexts.join(" | ")}`
+      );
+      assert.ok(drawnTexts.some((t) => t.startsWith("01   ")));
+      assert.ok(drawnTexts.some((t) => t.startsWith("02   ")));
+      // Zero pictographic emojis anywhere on editorial Canvas card
+      for (const t of drawnTexts) {
+        assert.equal(
+          PICTO_EMOJI_RE.test(t),
+          false,
+          `Emoji leaked onto editorial Canvas card (${theme}): ${t}`
+        );
+      }
+    }
   });
 
   it("renders X share trigger on SignalCard, SignalDetailView, XShareModal & attaches twitter handle metadata cleanly", async () => {

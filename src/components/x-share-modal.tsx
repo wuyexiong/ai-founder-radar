@@ -8,10 +8,8 @@ import {
   Copy,
   Download,
   ExternalLink,
-  Image as ImageIcon,
   Moon,
   RotateCcw,
-  ShieldCheck,
   Sun,
   X,
 } from "lucide-react";
@@ -158,7 +156,6 @@ export function XShareModal({
     [item, locale, lens, origin]
   );
 
-  // 读取用户偏好的卡片配图风格
   useEffect(() => {
     if (!open) return;
     try {
@@ -171,7 +168,6 @@ export function XShareModal({
     }
   }, [open]);
 
-  // 切换卡片或重新打开时重置编辑态
   useEffect(() => {
     if (!open) return;
     setMode("no_link_post");
@@ -181,7 +177,6 @@ export function XShareModal({
     setPost1Acted(false);
   }, [open, item.id, locale]);
 
-  // 锁定页面滚动并支持 Escape 关闭
   useEffect(() => {
     if (!open) return;
 
@@ -204,7 +199,6 @@ export function XShareModal({
     };
   }, [open, onClose]);
 
-  // 实时渲染 16:9 高清 Canvas 商业拆解卡片
   useEffect(() => {
     if (!open || !canvasRef.current) return;
     const categoryLabel =
@@ -273,7 +267,7 @@ export function XShareModal({
       if (imgTimerRef.current) clearTimeout(imgTimerRef.current);
       imgTimerRef.current = setTimeout(() => {
         setImageStatus("idle");
-      }, 2600);
+      }, 2400);
     }
   };
 
@@ -293,7 +287,7 @@ export function XShareModal({
     if (imgTimerRef.current) clearTimeout(imgTimerRef.current);
     imgTimerRef.current = setTimeout(() => {
       setImageStatus("idle");
-    }, 2200);
+    }, 2000);
   };
 
   const handleCopyText = async () => {
@@ -316,7 +310,7 @@ export function XShareModal({
     if (textTimerRef.current) clearTimeout(textTimerRef.current);
     textTimerRef.current = setTimeout(() => {
       setTextCopied(false);
-    }, 2000);
+    }, 1800);
   };
 
   const handleOpenXIntent = () => {
@@ -336,21 +330,9 @@ export function XShareModal({
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const charCountLabel = !metrics.overFreeLimit
-    ? xDict.freeLimitOk(metrics.weighted)
-    : mode === "quick_intent"
-      ? xDict.overQuickLimitNote(metrics.weighted)
-      : xDict.longPostNote(metrics.weighted);
-
-  const charCountClass = !metrics.overFreeLimit
-    ? "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-500/15 dark:border-emerald-500/30"
-    : mode === "quick_intent"
-      ? "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-500/15 dark:border-amber-500/35"
-      : "text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-300 dark:bg-blue-500/15 dark:border-blue-500/35";
-
   const modalNode = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 sm:p-5 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 sm:p-5 backdrop-blur-xs"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -361,76 +343,64 @@ export function XShareModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200/95 bg-white shadow-2xl shadow-slate-950/25 dark:border-slate-800 dark:bg-[#0F172A] dark:shadow-black/60"
+        className="flex max-h-[90vh] w-full max-w-[880px] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl shadow-black/25 dark:border-zinc-800 dark:bg-[#111215] dark:shadow-black/70"
       >
-        {/* 顶栏 */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 px-5 py-4 sm:px-6 dark:border-slate-800">
-          <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="flex items-center gap-2 text-base font-bold tracking-tight text-slate-900 dark:text-white"
-            >
-              <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-900 text-white dark:bg-white dark:text-slate-950">
-                <XBrandIcon className="h-3.5 w-3.5" />
-              </span>
-              <span>{xDict.modalTitle}</span>
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              {xDict.modalSubtitle}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={xDict.closeCta}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        {/* 极简顶栏：标题 + 卡片明暗切换 + 关闭 */}
+        <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-slate-200/75 px-5 dark:border-zinc-800/90">
+          <h2
+            id={titleId}
+            className="flex items-center gap-2 text-sm font-semibold tracking-tight text-slate-900 dark:text-zinc-100"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            <XBrandIcon className="h-3.5 w-3.5 text-slate-900 dark:text-zinc-100" />
+            <span>{xDict.modalTitle}</span>
+          </h2>
 
-        {/* 主内容双栏区 */}
-        <div className="grid grid-cols-1 gap-5 overflow-y-auto p-5 sm:p-6 lg:grid-cols-[1.08fr_1fr]">
-          {/* 左栏：16:9 原生高清配图工作室 */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                <ImageIcon className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                {xDict.cardPreviewLabel}
-              </span>
-
-              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-0.5 dark:border-slate-700/80 dark:bg-slate-900">
-                <button
-                  type="button"
-                  onClick={() => handleSelectTheme("terminal_dark")}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-                    cardTheme === "terminal_dark"
-                      ? "bg-slate-900 text-white shadow-2xs dark:bg-blue-600"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                  )}
-                >
-                  <Moon className="h-3 w-3" />
-                  <span>{xDict.themeDark}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectTheme("editorial_light")}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-                    cardTheme === "editorial_light"
-                      ? "bg-white text-slate-900 shadow-2xs dark:bg-slate-200 dark:text-slate-900"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                  )}
-                >
-                  <Sun className="h-3 w-3" />
-                  <span>{xDict.themeLight}</span>
-                </button>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200/90 bg-slate-100/80 p-0.5 dark:border-zinc-800 dark:bg-zinc-900">
+              <button
+                type="button"
+                onClick={() => handleSelectTheme("terminal_dark")}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                  cardTheme === "terminal_dark"
+                    ? "bg-white text-slate-900 shadow-2xs dark:bg-zinc-800 dark:text-zinc-100"
+                    : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                )}
+              >
+                <Moon className="h-3 w-3" />
+                <span>{xDict.themeDark}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectTheme("editorial_light")}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                  cardTheme === "editorial_light"
+                    ? "bg-white text-slate-900 shadow-2xs dark:bg-zinc-800 dark:text-zinc-100"
+                    : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                )}
+              >
+                <Sun className="h-3 w-3" />
+                <span>{xDict.themeLight}</span>
+              </button>
             </div>
 
-            {/* 16:9 Canvas 实时预览容器 */}
-            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-slate-200/90 bg-slate-950 shadow-sm dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={xDict.closeCta}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer dark:text-zinc-500 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 主体双栏：左卡片预览 + 右清爽文案编辑 */}
+        <div className="grid grid-cols-1 gap-5 overflow-y-auto p-5 lg:grid-cols-[1.12fr_1fr] lg:items-stretch">
+          {/* 左栏：16:9 社论卡片预览 + 图片操作 */}
+          <div className="flex flex-col justify-between gap-3">
+            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-slate-200/85 bg-[#0C0D10] shadow-xs dark:border-zinc-800">
               <canvas
                 ref={canvasRef}
                 aria-label={xDict.cardPreviewLabel}
@@ -438,18 +408,17 @@ export function XShareModal({
               />
             </div>
 
-            {/* 图片操作按钮 */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleCopyImage}
                 className={cn(
-                  "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-colors cursor-pointer",
+                  "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-medium transition-colors cursor-pointer",
                   imageStatus === "copied"
                     ? "bg-emerald-600 text-white"
                     : imageStatus === "downloaded"
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500"
+                      ? "bg-slate-800 text-white dark:bg-zinc-700"
+                      : "border border-slate-200/90 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
                 )}
               >
                 {imageStatus === "copied" ? (
@@ -473,81 +442,49 @@ export function XShareModal({
               <button
                 type="button"
                 onClick={handleDownloadImage}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
+                aria-label={xDict.downloadImageCta}
+                title={xDict.downloadImageCta}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 cursor-pointer dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 <Download className="h-3.5 w-3.5" />
                 <span>{xDict.downloadImageCta}</span>
               </button>
             </div>
-
-            <p className="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
-              {xDict.imageHint}
-            </p>
           </div>
 
-          {/* 右栏：3 模式文案模板 + 实时字数权重 + 一键发帖 */}
-          <div className="flex flex-col gap-3">
-            {/* 模式切换 Tab */}
-            <div
-              role="tablist"
-              aria-label={xDict.modalTitle}
-              className="grid grid-cols-3 gap-1.5 rounded-xl border border-slate-200/90 bg-slate-50/90 p-1 dark:border-slate-800 dark:bg-slate-900/70"
-            >
-              {X_SHARE_MODES.map((m) => {
-                const active = mode === m;
-                const info = xDict.modes[m];
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => {
-                      setMode(m);
-                      setTextCopied(false);
-                    }}
-                    className={cn(
-                      "flex flex-col items-center justify-center rounded-lg px-2 py-1.5 text-center transition-all cursor-pointer",
-                      active
-                        ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/90 dark:bg-slate-800 dark:text-white dark:ring-slate-700"
-                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                    )}
-                  >
-                    <span className="text-xs font-semibold leading-tight">
-                      {info.label}
-                    </span>
-                    <span
+          {/* 右栏：极简分段切换 + 一体化编辑器 + 发帖动作 */}
+          <div className="flex flex-col justify-between gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <div
+                role="tablist"
+                aria-label={xDict.modalTitle}
+                className="grid flex-1 grid-cols-3 gap-1 rounded-lg border border-slate-200/85 bg-slate-100/75 p-0.5 dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                {X_SHARE_MODES.map((m) => {
+                  const active = mode === m;
+                  const info = xDict.modes[m];
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setMode(m);
+                        setTextCopied(false);
+                      }}
                       className={cn(
-                        "mt-0.5 rounded px-1.5 py-0.2 text-[10px] font-medium",
+                        "h-7.5 rounded-md px-2 text-xs font-medium transition-colors cursor-pointer truncate",
                         active
-                          ? m === "no_link_post"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
-                            : m === "reply_cta"
-                              ? "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-                          : "text-slate-400 dark:text-slate-500"
+                          ? "bg-white text-slate-900 shadow-2xs dark:bg-zinc-800 dark:text-zinc-100"
+                          : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
                       )}
                     >
-                      {info.badge}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* 当前策略提示条 */}
-            <div className="rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[11.5px] leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
-              {modeMeta.tip}
-            </div>
-
-            {/* 编辑器顶栏 */}
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <label
-                htmlFor={editorId}
-                className="font-semibold text-slate-700 dark:text-slate-200"
-              >
-                {xDict.editorLabel}
-              </label>
+                      {info.label}
+                    </button>
+                  );
+                })}
+              </div>
 
               {isEdited && (
                 <button
@@ -559,60 +496,75 @@ export function XShareModal({
                       return next;
                     })
                   }
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 cursor-pointer dark:text-blue-400 dark:hover:text-blue-300"
+                  title={xDict.resetDraftCta}
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  <span>{xDict.resetDraftCta}</span>
+                  <span className="hidden sm:inline">{xDict.resetDraftCta}</span>
                 </button>
               )}
             </div>
 
-            {/* 可编辑文案框 */}
-            <textarea
-              id={editorId}
-              rows={9}
-              value={activeText}
-              onChange={(e) => {
-                const nextVal = e.target.value;
-                setCustomDrafts((prev) => ({ ...prev, [mode]: nextVal }));
-                if (textCopied) setTextCopied(false);
-              }}
-              className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:focus:border-blue-500 dark:focus:bg-slate-900"
-            />
-
-            {/* 实时 X 权重字数 + 防限流外链检测胶囊 */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono font-semibold tabular-nums",
-                  charCountClass
-                )}
-              >
-                {charCountLabel}
-              </span>
-
-              {!metrics.hasUrl ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200/80 bg-emerald-50/80 px-2 py-0.5 font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300">
-                  <ShieldCheck className="h-3 w-3" />
-                  <span>{xDict.noLinkSafeBadge}</span>
+            {/* 一体化文案编辑框（底部内嵌简短提示与字数统计，零多余边框胶囊） */}
+            <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-slate-50/50 transition-colors focus-within:border-slate-400 focus-within:bg-white dark:border-zinc-800 dark:bg-zinc-900/60 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-900">
+              <label htmlFor={editorId} className="sr-only">
+                {xDict.editorLabel}
+              </label>
+              <textarea
+                id={editorId}
+                rows={8}
+                value={activeText}
+                onChange={(e) => {
+                  const nextVal = e.target.value;
+                  setCustomDrafts((prev) => ({ ...prev, [mode]: nextVal }));
+                  if (textCopied) setTextCopied(false);
+                }}
+                className="w-full flex-1 resize-none bg-transparent px-3.5 py-3 text-[12.5px] leading-relaxed text-slate-900 focus:outline-none dark:text-zinc-100"
+              />
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 px-3.5 py-2 text-[11px] dark:border-zinc-800/80">
+                <span className="truncate text-slate-400 dark:text-zinc-500">
+                  {mode === "no_link_post" && post1Acted ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("reply_cta");
+                        setTextCopied(false);
+                      }}
+                      className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 cursor-pointer dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      <span>{xDict.nextStepReplyCta}</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  ) : (
+                    modeMeta.tip
+                  )}
                 </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-md border border-blue-200/80 bg-blue-50/80 px-2 py-0.5 font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-300">
-                  <span>{xDict.utmTrackedBadge}</span>
+
+                <span
+                  className={cn(
+                    "shrink-0 font-mono tabular-nums",
+                    !metrics.overFreeLimit
+                      ? "text-slate-400 dark:text-zinc-500"
+                      : mode === "quick_intent"
+                        ? "font-semibold text-amber-600 dark:text-amber-400"
+                        : "text-slate-500 dark:text-zinc-400"
+                  )}
+                >
+                  {`${metrics.weighted} / 280`}
                 </span>
-              )}
+              </div>
             </div>
 
-            {/* 主操作行：复制文案 + 直达 X 发帖 */}
-            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            {/* 主操作行：复制文案 + 打开 X 发帖 */}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleCopyText}
                 className={cn(
-                  "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3.5 text-xs font-semibold transition-colors cursor-pointer",
+                  "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3.5 text-xs font-medium transition-colors cursor-pointer",
                   textCopied
                     ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
-                    : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                    : "border-slate-200/90 bg-white text-slate-800 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
                 )}
               >
                 {textCopied ? (
@@ -631,33 +583,13 @@ export function XShareModal({
               <button
                 type="button"
                 onClick={handleOpenXIntent}
-                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white"
               >
                 <XBrandIcon className="h-3.5 w-3.5" />
                 <span>{xDict.postOnXCta}</span>
-                <ExternalLink className="h-3 w-3 opacity-75" />
+                <ExternalLink className="h-3 w-3 opacity-70" />
               </button>
             </div>
-
-            {/* 1 楼完成后一键接力 2 楼引流回复 */}
-            {mode === "no_link_post" && post1Acted && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200/90 bg-blue-50/75 px-3 py-2 text-xs dark:border-blue-500/35 dark:bg-blue-950/35">
-                <span className="text-[11.5px] text-blue-900 dark:text-blue-200">
-                  {xDict.nextStepReplyHint}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("reply_cta");
-                    setTextCopied(false);
-                  }}
-                  className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800 cursor-pointer dark:text-blue-300 dark:hover:text-blue-200"
-                >
-                  <span>{xDict.nextStepReplyCta}</span>
-                  <ArrowRight className="h-3 w-3" />
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>

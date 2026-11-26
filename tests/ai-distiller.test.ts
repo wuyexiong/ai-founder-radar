@@ -26,6 +26,10 @@ const SAMPLE_RAW_ITEM: RawFetchedItem = {
   sourceSublabel: "TrustMRR 实名榜",
   rawMetric: "MRR $14.5k",
   publishedAt: "2026-11-24T01:00:00.000Z",
+  launchMeta: {
+    productUrl: "https://invoicepilot.io",
+    discussionUrl: "https://trustmrr.com/startup/invoicepilot",
+  },
 };
 
 describe("AI Distiller Engine (ai-distiller.ts)", () => {
@@ -82,6 +86,16 @@ describe("AI Distiller Engine (ai-distiller.ts)", () => {
         assert.equal(url.includes(fakeKey), false, "API key must not appear in URL");
         assert.equal(url.includes("key="), false, "Query key param must not be used");
         assert.equal(call.headers["x-goog-api-key"], fakeKey);
+        const promptText = (
+          JSON.parse(call.bodyText ?? "{}") as {
+            contents?: Array<{ parts?: Array<{ text?: string }> }>;
+          }
+        ).contents?.[0]?.parts?.[0]?.text ?? "";
+        assert.ok(promptText.includes("NAMING RULE:"));
+        assert.ok(
+          promptText.includes("Source URL: https://trustmrr.com/startup/invoicepilot")
+        );
+        assert.ok(promptText.includes("Product URL: https://invoicepilot.io"));
 
         return jsonResponse({
           candidates: [

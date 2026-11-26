@@ -1,7 +1,13 @@
 import type { Locale } from "@/i18n/config";
 import type { CardLensLabels } from "@/i18n/dictionaries";
-import { buildSignalDetailUrl } from "@/lib/utils";
-import type { SignalCategory, SignalItem } from "@/types/signal";
+import { localizeSourceSublabel } from "@/lib/localize-sublabel";
+import { resolveSignalLinks } from "@/lib/signal-meta";
+import { buildSignalDetailUrl, resolveOriginalSubtitle } from "@/lib/utils";
+import type {
+  SignalCategory,
+  SignalItem,
+  SourcePlatform,
+} from "@/types/signal";
 
 export type XShareMode = "no_link_post" | "reply_cta" | "quick_intent";
 
@@ -17,6 +23,93 @@ export const X_URL_WEIGHT = 23;
 const X_HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
 const HTTP_URL_RE = /https?:\/\/[^\s\u3000<>()[\]{}"']+/gi;
 const TRAILING_URL_PUNCT_RE = /[.,;:!?。，；：！？）】》」』]+$/;
+const CJK_OR_KANA_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
+const PICTOGRAPHIC_ICON_RE = /[\p{Extended_Pictographic}\ufe0f\u200d]+/gu;
+
+/**
+ * X (twitter-text) 会把裸域名（如 `podnotes.app`、`Acquire.com`、`cal.com`）也自动解析为 t.co 外链。
+ * 在 1 楼无外链防限流模式下，将常见顶级域名前的半角点替换为中点 `·`，既保留人类可读性又彻底规避外链降权。
+ */
+const X_AUTO_LINK_BARE_DOMAIN_RE =
+  /\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)\.(com|io|ai|app|dev|co|net|org|sh|so|xyz|me|gg|tools|tech|cloud|page|site|pro|run|bot|chat|vc|tv|cc|ly|to|fm|is|it|us|uk|de|fr|jp|cn|hk|tw|edu|gov|info|biz|design|studio|work|live|link|online|store|shop)\b/gi;
+
+const GENERIC_MULTI_TENANT_HOST_RE =
+  /(^|\.)(google\.com|apple\.com|github\.com|gitlab\.com|microsoft\.com|mozilla\.org|notion\.site|notion\.so|gumroad\.com|lemonsqueezy\.com|substack\.com|medium\.com|youtube\.com|x\.com|twitter\.com)$/i;
+
+const GITHUB_RESERVED_OWNERS = new Set([
+  "trending",
+  "topics",
+  "orgs",
+  "users",
+  "features",
+  "explore",
+  "collections",
+  "marketplace",
+  "sponsors",
+  "about",
+  "pricing",
+  "login",
+  "signup",
+  "settings",
+  "search",
+  "notifications",
+  "pulls",
+  "issues",
+  "gist",
+]);
+
+const NON_PRODUCT_TITLE_PREFIX_RE =
+  /^(?:show\s+hn|ask\s+hn|tell\s+hn|launch\s+hn|verified\b|how\b|why\b|what\b|when\b|where\b|who\b|is\s+there|looking\s+for|built\b|building\b|my\b|our\b|we\b|i\b|solo\b|case\s+study|update\b|psa\b|rant\b|discussion\b|question\b|need\b|anyone\b|creators?\b|founders?\b|indie\b|from\b|hit\b|hitting\b|crossed\b|turned\b|turning\b|\$[\d,.]+|\d+\s+(?:days?|weeks?|months?|years?|hours?|weekends?))/i;
+
+const GENERIC_CATEGORY_WORDS = new Set([
+  "github",
+  "reddit",
+  "chrome",
+  "shopify",
+  "stripe",
+  "youtube",
+  "tiktok",
+  "macos",
+  "ios",
+  "android",
+  "saas",
+  "microsaas",
+  "show hn",
+  "ask hn",
+  "product hunt",
+  "hacker news",
+  "app store",
+  "trustmrr",
+  "acquire",
+]);
+
+const SAFE_PLATFORM_NAMES: Record<SourcePlatform, string> = {
+  producthunt: "Product Hunt",
+  hackernews: "Hacker News",
+  indiehackers: "Indie Hackers",
+  acquire: "Acquire",
+  reddit: "Reddit",
+  github: "GitHub",
+  trustmrr: "TrustMRR",
+  appstore: "App Store",
+};
+
+/**
+ * 剥离分享文案中的彩色 Emoji / Icon（如 💰🚀🔥⚡📌📍📄🧩💵🔑💬👇 等），保持干净克制的纯文本排版
+ */
+export function stripShareIcons(raw: string): string {
+  return raw
+    .replace(PICTOGRAPHIC_ICON_RE, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+export function neutralizeBareDomainsForX(raw: string): string {
+  if (!raw) return "";
+  return raw
+    .replace(/https?:\/\/(?:www\.)?/gi, "")
+    .replace(X_AUTO_LINK_BARE_DOMAIN_RE, "$1·$2");
+}
 
 export function normalizeXHandle(raw?: string | null): string | null {
   if (!raw) return null;
@@ -184,7 +277,7 @@ export function formatXHashtags(
     if (!stripped || stripped.length < 2) continue;
 
     // 英文语种严禁渗入 CJK 标签
-    if (locale === "en" && /[\u3040-\u30ff\u4e00-\u9fff]/.test(stripped)) {
+    if (locale === "en" && CJK_OR_KANA_RE.test(stripped)) {
       continue;
     }
 
@@ -210,14 +303,347 @@ export function formatXHashtags(
   return result;
 }
 
+export interface SignalOriginInfo {
+  platformLabel: string;
+  sourceProvenance: string;
+  subjectName: string | null;
+  productHost: string | null;
+  safeProductHost: string | null;
+  noLinkSubjectLabel: string | null;
+  canvasBadgeLabel: string | null;
+  cleanOrigTitle: string | null;
+  noLinkOrigTitle: string | null;
+  productUrl: string | null;
+  discussionUrl: string | null;
+}
+
+function extractGitHubRepoSlug(
+  urls: Array<string | null | undefined>,
+  titleOrig?: string | null
+): string | null {
+  for (const raw of urls) {
+    if (!raw) continue;
+    const m = raw.match(
+      /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#]|$)/i
+    );
+    if (!m) continue;
+    const owner = m[1]!;
+    const repo = m[2]!.replace(/\.git$/i, "");
+    if (!owner || !repo || GITHUB_RESERVED_OWNERS.has(owner.toLowerCase())) {
+      continue;
+    }
+    return `${owner}/${repo}`;
+  }
+
+  if (titleOrig) {
+    const titleRepo = titleOrig
+      .trim()
+      .match(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\s+(?:[—–-]|:)\s+/);
+    if (titleRepo?.[1]) {
+      return titleRepo[1].replace(/\.git$/i, "");
+    }
+  }
+
+  return null;
+}
+
+function extractDedicatedProductHost(productUrl: string | null): string | null {
+  if (!productUrl) return null;
+  try {
+    const host = new URL(productUrl)
+      .hostname.replace(/^www\./i, "")
+      .toLowerCase();
+    if (!host || GENERIC_MULTI_TENANT_HOST_RE.test(host)) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+function extractExplicitProductName(
+  item: SignalItem,
+  cleanedOrig: string | null,
+  discussionUrl: string | null
+): string | null {
+  if (cleanedOrig) {
+    const withoutHnPrefix = cleanedOrig
+      .replace(/^(?:Show\s+HN|Launch\s+HN)\s*:\s*/i, "")
+      .trim();
+
+    // App Store 条目格式为 "${appName} (${artist})"，完整保留冒号副标题但剥离末尾公司括号
+    if (item.sourcePlatform === "appstore") {
+      const appMatch = withoutHnPrefix.match(
+        /^([A-Za-z0-9][A-Za-z0-9\s.:&'+–-]{1,46}?)\s*\([^()]+\)$/
+      );
+      if (
+        appMatch?.[1] &&
+        !NON_PRODUCT_TITLE_PREFIX_RE.test(appMatch[1].trim())
+      ) {
+        return appMatch[1].trim();
+      }
+    }
+
+    const sepMatch = withoutHnPrefix.match(
+      /^([A-Za-z0-9][A-Za-z0-9\s._&'+/-]{1,33}?)\s*(?:[—–-]\s+|:\s+)/
+    );
+    if (sepMatch?.[1]) {
+      const candidate = sepMatch[1].trim();
+      const wordCount = candidate.split(/\s+/).length;
+      if (
+        wordCount <= 4 &&
+        !NON_PRODUCT_TITLE_PREFIX_RE.test(candidate) &&
+        !GENERIC_CATEGORY_WORDS.has(candidate.toLowerCase())
+      ) {
+        return candidate;
+      }
+    }
+  }
+
+  // 从中/日提炼标题前缀兜底提取明确英文品牌名（如 "ChurnRescue：专门挽回..."）
+  const zhPrefixMatch = (item.titleZh || item.title)
+    .trim()
+    .match(
+      /^([A-Za-z][A-Za-z0-9._&'+-]{1,26}(?:\s+[A-Za-z0-9._&'+-]{1,18})?)\s*[：:]/
+    );
+  if (zhPrefixMatch?.[1]) {
+    const candidate = zhPrefixMatch[1].trim();
+    if (
+      !NON_PRODUCT_TITLE_PREFIX_RE.test(candidate) &&
+      !GENERIC_CATEGORY_WORDS.has(candidate.toLowerCase())
+    ) {
+      return candidate;
+    }
+  }
+
+  // TrustMRR 实名项目详情页 URL slug 兜底（如 https://trustmrr.com/startup/podnotes -> podnotes）
+  for (const rawUrl of [discussionUrl, item.sourceUrl]) {
+    if (!rawUrl) continue;
+    const slugMatch = rawUrl.match(
+      /^https?:\/\/(?:www\.)?trustmrr\.com\/startup\/([a-z0-9][a-z0-9_-]{1,30})(?:[/?#]|$)/i
+    );
+    const slug = slugMatch?.[1];
+    if (
+      slug &&
+      !/^(?:anonymous|hidden[\s-]?business|private[\s-]?enterprise|stealth[\s-]?venture|startup-[a-f0-9]+)$/i.test(
+        slug
+      )
+    ) {
+      return slug;
+    }
+  }
+
+  return null;
+}
+
+function formatSourceProvenance(
+  platform: SourcePlatform,
+  rawSublabel: string | undefined | null,
+  locale: Locale
+): string {
+  const platformLabel = SAFE_PLATFORM_NAMES[platform] ?? platform;
+  let sub = stripShareIcons(localizeSourceSublabel(rawSublabel, locale));
+  if (!sub) return platformLabel;
+
+  if (locale === "en" && CJK_OR_KANA_RE.test(sub)) {
+    return platformLabel;
+  }
+
+  const escapedPlatform = platformLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  sub = sub
+    .replace(new RegExp(`^${escapedPlatform}\\s*[·•:\\-–—]?\\s*`, "i"), "")
+    .replace(
+      platform === "producthunt"
+        ? /^PH\s+/i
+        : platform === "indiehackers"
+          ? /^IH\s+/i
+          : /^$/,
+      ""
+    )
+    .trim();
+
+  if (!sub || sub.toLowerCase() === platformLabel.toLowerCase()) {
+    return platformLabel;
+  }
+  return `${platformLabel} · ${neutralizeBareDomainsForX(sub)}`;
+}
+
+/**
+ * 统一解析卡片的「原产品 / 开源仓库 / 一手信源与双轨外链」元数据，
+ * 同时服务 X 三模式文案模板与 16:9 Canvas 分享配图。
+ */
+export function resolveSignalOriginInfo(
+  item: SignalItem,
+  locale: Locale
+): SignalOriginInfo {
+  const platformLabel =
+    SAFE_PLATFORM_NAMES[item.sourcePlatform] ?? item.sourcePlatform;
+  const sourceProvenance = formatSourceProvenance(
+    item.sourcePlatform,
+    item.sourceSublabel,
+    locale
+  );
+
+  const { productUrl, discussionUrl } = resolveSignalLinks({
+    sourcePlatform: item.sourcePlatform,
+    sourceUrl: item.sourceUrl,
+    meta: {
+      productUrl: item.productUrl,
+      discussionUrl: item.discussionUrl,
+    },
+  });
+
+  const rawOrig = resolveOriginalSubtitle({
+    locale: "zh",
+    title: "",
+    titleOrig: item.titleOrig,
+  });
+  const strippedOrig = rawOrig
+    ? stripShareIcons(rawOrig.replace(/https?:\/\/\S+/gi, ""))
+    : null;
+  const cleanOrigTitle =
+    strippedOrig && !(locale === "en" && CJK_OR_KANA_RE.test(strippedOrig))
+      ? strippedOrig
+      : null;
+  const noLinkOrigTitle = cleanOrigTitle
+    ? neutralizeBareDomainsForX(cleanOrigTitle)
+    : null;
+
+  const repoSlug =
+    item.sourcePlatform === "github"
+      ? extractGitHubRepoSlug(
+          [discussionUrl, item.sourceUrl, productUrl],
+          cleanOrigTitle
+        )
+      : extractGitHubRepoSlug([discussionUrl, item.sourceUrl], null);
+
+  const productHost = extractDedicatedProductHost(productUrl);
+  const safeProductHost = productHost
+    ? neutralizeBareDomainsForX(productHost)
+    : null;
+
+  const subjectName =
+    repoSlug ?? extractExplicitProductName(item, cleanOrigTitle, discussionUrl);
+  const safeSubjectName = subjectName
+    ? neutralizeBareDomainsForX(subjectName)
+    : null;
+
+  const isRedundantSlug =
+    Boolean(subjectName && productHost) &&
+    subjectName === subjectName!.toLowerCase() &&
+    productHost!.split(".")[0] === subjectName!.toLowerCase();
+
+  let noLinkSubjectLabel: string | null = null;
+  if (safeSubjectName && safeProductHost && !isRedundantSlug) {
+    if (
+      safeSubjectName.toLowerCase().replace(/\s+/g, "") ===
+      safeProductHost.toLowerCase()
+    ) {
+      noLinkSubjectLabel = safeSubjectName;
+    } else {
+      noLinkSubjectLabel =
+        locale === "en"
+          ? `${safeSubjectName} (${safeProductHost})`
+          : `${safeSubjectName}（${safeProductHost}）`;
+    }
+  } else if (safeProductHost && isRedundantSlug) {
+    noLinkSubjectLabel = safeProductHost;
+  } else if (safeSubjectName) {
+    noLinkSubjectLabel = safeSubjectName;
+  } else if (safeProductHost) {
+    noLinkSubjectLabel = safeProductHost;
+  }
+
+  let canvasBadgeLabel: string | null = null;
+  if (repoSlug && productHost) {
+    canvasBadgeLabel = `${repoSlug} · ${productHost}`;
+  } else if (repoSlug) {
+    canvasBadgeLabel = repoSlug;
+  } else if (subjectName && productHost && !isRedundantSlug) {
+    const titleHasSubject = item.title
+      .toLowerCase()
+      .includes(subjectName.toLowerCase());
+    canvasBadgeLabel = titleHasSubject
+      ? productHost
+      : `${subjectName} · ${productHost}`;
+  } else if (productHost) {
+    canvasBadgeLabel = productHost;
+  } else if (subjectName) {
+    const titleHasSubject = item.title
+      .toLowerCase()
+      .includes(subjectName.toLowerCase());
+    canvasBadgeLabel = titleHasSubject ? null : subjectName;
+  }
+
+  return {
+    platformLabel,
+    sourceProvenance,
+    subjectName,
+    productHost,
+    safeProductHost,
+    noLinkSubjectLabel,
+    canvasBadgeLabel,
+    cleanOrigTitle,
+    noLinkOrigTitle,
+    productUrl,
+    discussionUrl,
+  };
+}
+
+function buildNoLinkOriginLines(
+  item: SignalItem,
+  locale: Locale,
+  origin: SignalOriginInfo
+): string[] {
+  const isRepo = item.sourcePlatform === "github";
+
+  if (locale === "en") {
+    if (origin.noLinkSubjectLabel) {
+      const prefix = isRepo ? "Repo:" : "Product:";
+      return [
+        `${prefix} ${origin.noLinkSubjectLabel} · Source: ${origin.sourceProvenance}`,
+      ];
+    }
+    return [`Source: ${origin.sourceProvenance}`];
+  }
+
+  if (locale === "zh-TW") {
+    if (origin.noLinkSubjectLabel) {
+      const prefix = isRepo ? "開源專案：" : "原產品：";
+      return [
+        `${prefix}${origin.noLinkSubjectLabel}（來源：${origin.sourceProvenance}）`,
+      ];
+    }
+    return [`一手來源：${origin.sourceProvenance}`];
+  }
+
+  if (locale === "ja") {
+    if (origin.noLinkSubjectLabel) {
+      const prefix = isRepo ? "対象リポジトリ：" : "対象プロダクト：";
+      return [
+        `${prefix}${origin.noLinkSubjectLabel}（出典：${origin.sourceProvenance}）`,
+      ];
+    }
+    return [`一次情報元：${origin.sourceProvenance}`];
+  }
+
+  // zh：无任何 Emoji Icon，且不再输出冗余的「英文原题」行
+  if (origin.noLinkSubjectLabel) {
+    const prefix = isRepo ? "开源项目：" : "原产品：";
+    return [
+      `${prefix}${origin.noLinkSubjectLabel}（信源：${origin.sourceProvenance}）`,
+    ];
+  }
+  return [`一手信源：${origin.sourceProvenance}`];
+}
+
 function formatHookHeadline(
   locale: Locale,
   category: SignalCategory,
   title: string,
   metricsBadge: string
 ): string {
-  const cleanTitle = title.trim();
-  const cleanBadge = metricsBadge.trim();
+  const cleanTitle = stripShareIcons(title);
+  const cleanBadge = stripShareIcons(metricsBadge);
   const badgeAlreadyInTitle =
     Boolean(cleanBadge) &&
     cleanTitle.toLowerCase().includes(cleanBadge.toLowerCase());
@@ -232,52 +658,52 @@ function formatHookHeadline(
   if (locale === "zh") {
     switch (category) {
       case "revenue":
-        return `💰 真实变现信号${badgeTag}：${cleanTitle}`;
+        return `真实变现信号${badgeTag}：${cleanTitle}`;
       case "launch":
-        return `🚀 今日出海新品${badgeTag}：${cleanTitle}`;
+        return `今日出海新品${badgeTag}：${cleanTitle}`;
       case "pain_point":
-        return `🔥 海外高赞痛点${badgeTag}：${cleanTitle}`;
+        return `海外高赞痛点${badgeTag}：${cleanTitle}`;
       case "ai_trend":
-        return `⚡ AI / 开源风向${badgeTag}：${cleanTitle}`;
+        return `AI / 开源风向${badgeTag}：${cleanTitle}`;
     }
   }
 
   if (locale === "zh-TW") {
     switch (category) {
       case "revenue":
-        return `💰 真實變現信號${badgeTag}：${cleanTitle}`;
+        return `真實變現信號${badgeTag}：${cleanTitle}`;
       case "launch":
-        return `🚀 今日出海新品${badgeTag}：${cleanTitle}`;
+        return `今日出海新品${badgeTag}：${cleanTitle}`;
       case "pain_point":
-        return `🔥 海外高讚痛點${badgeTag}：${cleanTitle}`;
+        return `海外高讚痛點${badgeTag}：${cleanTitle}`;
       case "ai_trend":
-        return `⚡ AI / 開源風向${badgeTag}：${cleanTitle}`;
+        return `AI / 開源風向${badgeTag}：${cleanTitle}`;
     }
   }
 
   if (locale === "ja") {
     switch (category) {
       case "revenue":
-        return `💰 リアル収益シグナル${badgeTag}：${cleanTitle}`;
+        return `リアル収益シグナル${badgeTag}：${cleanTitle}`;
       case "launch":
-        return `🚀 注目の新着プロダクト${badgeTag}：${cleanTitle}`;
+        return `注目の新着プロダクト${badgeTag}：${cleanTitle}`;
       case "pain_point":
-        return `🔥 海外のリアル課題${badgeTag}：${cleanTitle}`;
+        return `海外のリアル課題${badgeTag}：${cleanTitle}`;
       case "ai_trend":
-        return `⚡ AI・OSS トレンド${badgeTag}：${cleanTitle}`;
+        return `AI・OSS トレンド${badgeTag}：${cleanTitle}`;
     }
   }
 
   // en
   switch (category) {
     case "revenue":
-      return `💰 Verified revenue signal${badgeTag}: ${cleanTitle}`;
+      return `Verified revenue signal${badgeTag}: ${cleanTitle}`;
     case "launch":
-      return `🚀 Notable indie launch${badgeTag}: ${cleanTitle}`;
+      return `Notable indie launch${badgeTag}: ${cleanTitle}`;
     case "pain_point":
-      return `🔥 Validated buyer pain${badgeTag}: ${cleanTitle}`;
+      return `Validated buyer pain${badgeTag}: ${cleanTitle}`;
     case "ai_trend":
-      return `⚡ AI & OSS signal${badgeTag}: ${cleanTitle}`;
+      return `AI & OSS signal${badgeTag}: ${cleanTitle}`;
   }
 }
 
@@ -285,122 +711,265 @@ function getEngagementPrompt(locale: Locale, category: SignalCategory): string {
   if (locale === "zh") {
     switch (category) {
       case "revenue":
-        return "你觉得这个垂直切口在中文或海外细分场景里还能怎么微创新？\n完整拆解、产品官网与一手原帖放评论区 👇";
+        return "你觉得这个垂直切口在中文或海外细分场景里还能怎么微创新？\n原产品官网、一手原帖与完整拆解放评论区。";
       case "launch":
-        return "如果是你来做这个方向，会保留哪个核心功能、砍掉哪块？\n产品官网与一手讨论链接放评论区 👇";
+        return "如果是你来做这个方向，会保留哪个核心功能、砍掉哪块？\n原产品官网与一手讨论链接放评论区。";
       case "pain_point":
-        return "这种用户主动喊着要付费的痛点，你觉得值得周末出个 MVP 测测吗？\n原帖讨论与完整商机拆解放评论区 👇";
+        return "这种用户主动喊着要付费的痛点，你觉得值得周末出个 MVP 测测吗？\n一手原帖与完整商机拆解放评论区。";
       case "ai_trend":
-        return "这个技术/开源风向，你会优先把它包装成什么垂直小工具来收费？\n项目入口与商业化拆解放评论区 👇";
+        return "这个技术/开源风向，你会优先把它包装成什么垂直小工具来收费？\n开源仓库、官网与商业化拆解放评论区。";
     }
   }
 
   if (locale === "zh-TW") {
     switch (category) {
       case "revenue":
-        return "你覺得這個垂直切角還有哪些細分場景可以微創新？\n完整拆解、產品官網與一手原帖放留言區 👇";
+        return "你覺得這個垂直切角還有哪些細分場景可以微創新？\n原產品官網、一手原帖與完整拆解放留言區。";
       case "launch":
-        return "如果是你來做這個方向，會先保留哪個核心功能？\n產品官網與一手討論連結放留言區 👇";
+        return "如果是你來做這個方向，會先保留哪個核心功能？\n原產品官網與一手討論連結放留言區。";
       case "pain_point":
-        return "這種使用者主動喊著想付費的痛點，值得用週末做個 MVP 驗證嗎？\n原帖討論與完整拆解放留言區 👇";
+        return "這種使用者主動喊著想付費的痛點，值得用週末做個 MVP 驗證嗎？\n一手原帖與完整拆解放留言區。";
       case "ai_trend":
-        return "這個技術/開源風向，你會優先包裝成什麼垂直小工具變現？\n專案入口與商業化拆解放留言區 👇";
+        return "這個技術/開源風向，你會優先包裝成什麼垂直小工具變現？\n開源專案、官網與商業化拆解放留言區。";
     }
   }
 
   if (locale === "ja") {
     switch (category) {
       case "revenue":
-        return "このニッチ領域、日本市場や別業界に横展開するとしたらどこを狙いますか？\n詳細分析・公式サイト・一次情報リンクはリプ欄へ 👇";
+        return "このニッチ領域、日本市場や別業界に横展開するとしたらどこを狙いますか？\n公式サイト・一次情報リンク・詳細分析はリプ欄へ。";
       case "launch":
-        return "もし自分でこの領域に参入するなら、どの機能に絞り込みますか？\n公式サイトと一次情報リンクはリプ欄へ 👇";
+        return "もし自分でこの領域に参入するなら、どの機能に絞り込みますか？\n公式サイトと一次情報リンクはリプ欄へ。";
       case "pain_point":
-        return "課金意欲が高いリアルな課題ですね。週末MVPで検証する価値ありそうでしょうか？\n元スレッドと詳細分析はリプ欄へ 👇";
+        return "課金意欲が高いリアルな課題ですね。週末MVPで検証する価値ありそうでしょうか？\n元スレッドと詳細分析はリプ欄へ。";
       case "ai_trend":
-        return "この技術・OSSトレンド、どんな垂直型マイクロSaaSに組み込めそうでしょう？\nプロジェクトURLと分析詳細はリプ欄へ 👇";
+        return "この技術・OSSトレンド、どんな垂直型マイクロSaaSに組み込めそうでしょう？\nリポジトリ・公式サイト・分析詳細はリプ欄へ。";
     }
   }
 
   // en
   switch (category) {
     case "revenue":
-      return "Would you clone this wedge for another vertical, or is distribution the real moat here?\nFull breakdown, product site & original source in the reply below 👇";
+      return "Would you clone this wedge for another vertical, or is distribution the real moat here?\nDirect product site, original source & full breakdown in the reply below.";
     case "launch":
-      return "If you were building a leaner v1 in this space, what would you keep vs. cut?\nProduct website & original discussion link in the reply below 👇";
+      return "If you were building a leaner v1 in this space, what would you keep vs. cut?\nDirect product site & original discussion link in the reply below.";
     case "pain_point":
-      return "Feels like a clean weekend-MVP wedge with real buyer urgency — would you ship it?\nOriginal thread & full breakdown in the reply below 👇";
+      return "Feels like a clean weekend-MVP wedge with real buyer urgency — would you ship it?\nOriginal thread & full commercial breakdown in the reply below.";
     case "ai_trend":
-      return "How would you wrap this into a paid vertical workflow instead of competing on raw tech?\nRepo/source & full commercial breakdown in the reply below 👇";
+      return "How would you wrap this into a paid vertical workflow instead of competing on raw tech?\nRepo, product site & full breakdown in the reply below.";
   }
 }
 
-function buildReplyCtaDraft(locale: Locale, replyUrl: string): string {
-  switch (locale) {
-    case "zh":
-      return [
-        "👇 完整三要素拆解 + 产品官网 & 一手原帖直达：",
-        replyUrl,
-        "",
-        "每天早上 5 分钟，自动筛完 TrustMRR / Product Hunt / Show HN / Reddit 等 8 大海外一手信源，只留真变现、真痛点。",
-      ].join("\n");
-    case "zh-TW":
-      return [
-        "👇 完整三要素拆解 + 產品官網 & 一手原帖直達：",
-        replyUrl,
-        "",
-        "每天早上 5 分鐘，自動篩選 TrustMRR / Product Hunt / Show HN / Reddit 等 8 大海外一手來源，只留真變現與真痛點。",
-      ].join("\n");
-    case "ja":
-      return [
-        "👇 詳細分析 + 公式サイト & 一次情報リンクはこちら：",
-        replyUrl,
-        "",
-        "毎朝5分で TrustMRR / Product Hunt / Show HN / Reddit など海外8大ソースから「リアルな収益事例と課題」だけを厳選しています。",
-      ].join("\n");
-    default:
-      return [
-        "👇 Full 3-point breakdown + direct product & original source links:",
-        replyUrl,
-        "",
-        "Daily 5-min radar scanning 8 primary indie sources (TrustMRR, Product Hunt, Show HN, Reddit, Acquire & more) — pure commercial signal, zero noise.",
-      ].join("\n");
+function buildReplyCtaDraft(
+  locale: Locale,
+  item: SignalItem,
+  origin: SignalOriginInfo,
+  replyUrl: string
+): string {
+  const isRepo = item.sourcePlatform === "github";
+  const isAppStore =
+    item.sourcePlatform === "appstore" &&
+    Boolean(
+      origin.discussionUrl && /apps\.apple\.com/i.test(origin.discussionUrl)
+    );
+
+  if (locale === "zh") {
+    const lines = ["原产品与一手原帖直达："];
+    if (origin.productUrl) {
+      lines.push(`原产品官网：${origin.productUrl}`);
+    }
+    if (origin.discussionUrl) {
+      const srcLabel = isRepo
+        ? "开源仓库"
+        : isAppStore
+          ? "App Store"
+          : `一手原帖（${origin.platformLabel}）`;
+      lines.push(`${srcLabel}：${origin.discussionUrl}`);
+    }
+    lines.push(`完整商业拆解：${replyUrl}`);
+    lines.push(
+      "",
+      "每天 5 分钟筛完 TrustMRR / Product Hunt / Show HN / Reddit 等 8 大海外一手信源，只留真变现与真痛点。"
+    );
+    return lines.join("\n");
   }
+
+  if (locale === "zh-TW") {
+    const lines = ["原產品與一手原帖直達："];
+    if (origin.productUrl) {
+      lines.push(`原產品官網：${origin.productUrl}`);
+    }
+    if (origin.discussionUrl) {
+      const srcLabel = isRepo
+        ? "開源專案"
+        : isAppStore
+          ? "App Store"
+          : `一手原帖（${origin.platformLabel}）`;
+      lines.push(`${srcLabel}：${origin.discussionUrl}`);
+    }
+    lines.push(`完整商業拆解：${replyUrl}`);
+    lines.push(
+      "",
+      "每天 5 分鐘篩選 TrustMRR / Product Hunt / Show HN / Reddit 等 8 大海外一手來源，只留真變現與真痛點。"
+    );
+    return lines.join("\n");
+  }
+
+  if (locale === "ja") {
+    const lines = ["公式サイト・一次情報リンク直通："];
+    if (origin.productUrl) {
+      lines.push(`公式サイト：${origin.productUrl}`);
+    }
+    if (origin.discussionUrl) {
+      const srcLabel = isRepo
+        ? "リポジトリ"
+        : isAppStore
+          ? "App Store"
+          : `元記事（${origin.platformLabel}）`;
+      lines.push(`${srcLabel}：${origin.discussionUrl}`);
+    }
+    lines.push(`詳細ビジネス分析：${replyUrl}`);
+    lines.push(
+      "",
+      "毎朝5分で TrustMRR / Product Hunt / Show HN / Reddit など海外8大ソースからリアルな収益事例と課題だけを厳選。"
+    );
+    return lines.join("\n");
+  }
+
+  // en
+  const lines = ["Direct product & primary source links:"];
+  if (origin.productUrl) {
+    lines.push(`Product: ${origin.productUrl}`);
+  }
+  if (origin.discussionUrl) {
+    const srcLabel = isRepo
+      ? "Repo"
+      : isAppStore
+        ? "App Store"
+        : `Original (${origin.platformLabel})`;
+    lines.push(`${srcLabel}: ${origin.discussionUrl}`);
+  }
+  lines.push(`Full breakdown: ${replyUrl}`);
+  lines.push(
+    "",
+    "Daily 5-min indie radar scanning 8 primary sources — pure commercial signal, zero noise."
+  );
+  return lines.join("\n");
+}
+
+function buildQuickFooterLines(params: {
+  locale: Locale;
+  item: SignalItem;
+  origin: SignalOriginInfo;
+  directUrl: string;
+  xHandle: string | null;
+}): string[] {
+  const { locale, item, origin, directUrl, xHandle } = params;
+  const viaSuffix = xHandle ? ` via @${xHandle}` : "";
+  const isRepo = item.sourcePlatform === "github";
+  const isAppStore =
+    item.sourcePlatform === "appstore" &&
+    Boolean(
+      origin.discussionUrl && /apps\.apple\.com/i.test(origin.discussionUrl)
+    );
+
+  const lines: string[] = [];
+  if (locale === "zh") {
+    if (origin.productUrl) lines.push(`官网：${origin.productUrl}`);
+    if (origin.discussionUrl) {
+      const lbl = isRepo ? "仓库" : isAppStore ? "商店" : "原帖";
+      lines.push(`${lbl}：${origin.discussionUrl}`);
+    }
+    lines.push(`拆解：${directUrl}${viaSuffix}`);
+    return lines;
+  }
+
+  if (locale === "zh-TW") {
+    if (origin.productUrl) lines.push(`官網：${origin.productUrl}`);
+    if (origin.discussionUrl) {
+      const lbl = isRepo ? "專案" : isAppStore ? "商店" : "原帖";
+      lines.push(`${lbl}：${origin.discussionUrl}`);
+    }
+    lines.push(`拆解：${directUrl}${viaSuffix}`);
+    return lines;
+  }
+
+  if (locale === "ja") {
+    if (origin.productUrl) lines.push(`公式：${origin.productUrl}`);
+    if (origin.discussionUrl) {
+      const lbl = isRepo ? "Repo" : isAppStore ? "App" : "元記事";
+      lines.push(`${lbl}：${origin.discussionUrl}`);
+    }
+    lines.push(`解説：${directUrl}${viaSuffix}`);
+    return lines;
+  }
+
+  // en
+  if (origin.productUrl) lines.push(`Site: ${origin.productUrl}`);
+  if (origin.discussionUrl) {
+    const lbl = isRepo ? "Repo" : isAppStore ? "App" : "Source";
+    lines.push(`${lbl}: ${origin.discussionUrl}`);
+  }
+  lines.push(`Brief: ${directUrl}${viaSuffix}`);
+  return lines;
 }
 
 function buildQuickIntentDraft(params: {
   item: SignalItem;
   locale: Locale;
   lens: CardLensLabels;
+  origin: SignalOriginInfo;
   directUrl: string;
   xHandle: string | null;
 }): string {
-  const { item, locale, lens, directUrl, xHandle } = params;
-  const cleanBadge = item.metricsBadge.trim();
-  const cleanTitle = item.title.trim();
+  const { item, locale, lens, origin, directUrl, xHandle } = params;
+  const cleanBadge = stripShareIcons(item.metricsBadge);
+  const cleanTitle = stripShareIcons(item.title);
   const badgePrefix =
     cleanBadge && !cleanTitle.toLowerCase().includes(cleanBadge.toLowerCase())
       ? `[${cleanBadge}] `
       : "";
 
-  const viaSuffix = xHandle ? ` via @${xHandle}` : "";
-  const footerLine = `${directUrl}${viaSuffix}`;
+  const rawSubject = origin.subjectName
+    ? neutralizeBareDomainsForX(origin.subjectName)
+    : origin.safeProductHost;
+  const hasSubjectInTitle =
+    Boolean(rawSubject) &&
+    cleanTitle
+      .toLowerCase()
+      .includes((origin.subjectName ?? origin.productHost ?? "").toLowerCase());
+  const subjectPrefix =
+    rawSubject && !hasSubjectInTitle
+      ? `${rawSubject} · `
+      : !rawSubject &&
+          !cleanTitle.toLowerCase().includes(origin.platformLabel.toLowerCase())
+        ? `${origin.platformLabel} · `
+        : "";
+
+  const footerLine = buildQuickFooterLines({
+    locale,
+    item,
+    origin,
+    directUrl,
+    xHandle,
+  }).join("\n");
   const footerWeight = measureXTextWeight(footerLine).weighted;
 
-  // 预留 2 个换行符 + 安全余量
-  const fullHeadline = `${badgePrefix}${cleanTitle}`;
-  const playbookLine = `${lens.playbook.trim()} ${item.indieTakeaway.trim()}`;
+  const fullHeadline = `${badgePrefix}${subjectPrefix}${cleanTitle}`;
+  const cleanPlaybookLabel = stripShareIcons(lens.playbook);
+  const cleanTakeaway = stripShareIcons(item.indieTakeaway);
+  const playbookLine = `${cleanPlaybookLabel} ${cleanTakeaway}`;
 
   const combined = `${fullHeadline}\n\n${playbookLine}\n\n${footerLine}`;
   if (measureXTextWeight(combined).weighted <= X_FREE_CHAR_LIMIT) {
     return combined;
   }
 
-  // 优先保留完整标题，适度压缩第三行（抄作业/Playbook）
   const newlineBudget = 4; // two "\n\n"
   const availableForContent = X_FREE_CHAR_LIMIT - footerWeight - newlineBudget;
   const headlineWeight = measureXTextWeight(fullHeadline).weighted;
 
-  if (headlineWeight <= availableForContent - 48) {
+  if (headlineWeight <= availableForContent - 42) {
     const remainingForPlaybook = availableForContent - headlineWeight;
     const compactPlaybook = truncateToXWeight(
       playbookLine,
@@ -412,13 +981,12 @@ function buildQuickIntentDraft(params: {
     }
   }
 
-  // 标题本身偏长时：按比例分配标题与核心启发预算
-  const maxHeadlineWeight = Math.max(40, Math.floor(availableForContent * 0.54));
+  const maxHeadlineWeight = Math.max(44, Math.floor(availableForContent * 0.58));
   const compactHeadline = truncateToXWeight(fullHeadline, maxHeadlineWeight);
   const remainingWeight =
     availableForContent - measureXTextWeight(compactHeadline).weighted;
 
-  if (remainingWeight >= 28) {
+  if (remainingWeight >= 26) {
     const compactPlaybook = truncateToXWeight(playbookLine, remainingWeight);
     const candidate = `${compactHeadline}\n\n${compactPlaybook}\n\n${footerLine}`;
     if (measureXTextWeight(candidate).weighted <= X_FREE_CHAR_LIMIT) {
@@ -426,7 +994,6 @@ function buildQuickIntentDraft(params: {
     }
   }
 
-  // 极端兜底：仅保留压缩标题 + 链接
   const tightHeadline = truncateToXWeight(
     fullHeadline,
     X_FREE_CHAR_LIMIT - footerWeight - 2
@@ -444,6 +1011,7 @@ export interface BuildXShareDraftsParams {
 
 export interface XShareBundle {
   drafts: Record<XShareMode, string>;
+  origin: SignalOriginInfo;
   detailUrl: string;
   replyUrl: string;
   directUrl: string;
@@ -451,10 +1019,10 @@ export interface XShareBundle {
 }
 
 /**
- * 为单张商业信号卡片一次性生成三套针对 X 算法优化的运营文案：
- * 1. no_link_post：1 楼防限流无外链主帖（配 16:9 卡片图使用，最大化算法推荐与收藏）
- * 2. reply_cta：2 楼评论区引流回复（带独立详情页 UTM 链接，承接高意向访问与早报订阅）
- * 3. quick_intent：<= 280 加权字符一键直发帖（带专属 OG 大卡片链接与可选 via @handle）
+ * 为单张商业信号卡片一次性生成三套无 Emoji Icon 噪音的纯净 X 运营文案：
+ * 1. no_link_post：1 楼防限流无外链主帖（附纯文本原产品/仓库名 + 信源出处，无外链不降权）
+ * 2. reply_cta：2 楼评论区引流回复（同时附上原产品官网、一手原帖与本站 UTM 拆解链接）
+ * 3. quick_intent：<= 280 加权字符一键直发帖（带产品标识前缀 + 原产品/原帖/本站拆解直达链接）
  */
 export function buildXShareBundle(params: BuildXShareDraftsParams): XShareBundle {
   const { item, locale, lens, siteUrl } = params;
@@ -462,6 +1030,8 @@ export function buildXShareBundle(params: BuildXShareDraftsParams): XShareBundle
     params.xHandle !== undefined
       ? normalizeXHandle(params.xHandle)
       : getConfiguredXHandle();
+
+  const origin = resolveSignalOriginInfo(item, locale);
 
   const detailUrl = buildSignalDetailUrl({
     siteUrl,
@@ -493,31 +1063,37 @@ export function buildXShareBundle(params: BuildXShareDraftsParams): XShareBundle
     item.title,
     item.metricsBadge
   );
+  const originLines = buildNoLinkOriginLines(item, locale, origin);
   const engagement = getEngagementPrompt(locale, item.category);
   const hashtags = formatXHashtags(item.tags, locale, 2).join(" ");
 
+  const cleanWhatLabel = stripShareIcons(lens.whatItIs);
+  const cleanMonetizationLabel = stripShareIcons(lens.monetization);
+  const cleanPlaybookLabel = stripShareIcons(lens.playbook);
+
   const noLinkPost = [
     hook,
+    ...originLines,
     "",
-    `${lens.whatItIs.trim()} ${item.whatItIs.trim()}`,
-    `${lens.monetization.trim()} ${item.businessSignal.trim()}`,
-    `${lens.playbook.trim()} ${item.indieTakeaway.trim()}`,
+    `${cleanWhatLabel} ${stripShareIcons(item.whatItIs)}`,
+    `${cleanMonetizationLabel} ${stripShareIcons(item.businessSignal)}`,
+    `${cleanPlaybookLabel} ${stripShareIcons(item.indieTakeaway)}`,
     "",
     engagement,
     hashtags,
   ]
     .filter((line, idx, arr) => {
-      // 保留刻意留白行，但剔除末尾空行
       if (idx === arr.length - 1 && !line.trim()) return false;
       return true;
     })
     .join("\n");
 
-  const replyCta = buildReplyCtaDraft(locale, replyUrl);
+  const replyCta = buildReplyCtaDraft(locale, item, origin, replyUrl);
   const quickIntent = buildQuickIntentDraft({
     item,
     locale,
     lens,
+    origin,
     directUrl,
     xHandle,
   });
@@ -528,6 +1104,7 @@ export function buildXShareBundle(params: BuildXShareDraftsParams): XShareBundle
       reply_cta: replyCta,
       quick_intent: quickIntent,
     },
+    origin,
     detailUrl,
     replyUrl,
     directUrl,

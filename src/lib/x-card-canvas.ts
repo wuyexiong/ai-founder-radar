@@ -1,5 +1,6 @@
 import type { Locale } from "@/i18n/config";
 import type { CardLensLabels } from "@/i18n/dictionaries";
+import { resolveSignalOriginInfo } from "@/lib/x-share";
 import type { SignalCategory, SignalItem } from "@/types/signal";
 
 export type XCardTheme = "terminal_dark" | "editorial_light";
@@ -11,10 +12,31 @@ export const X_CARD_DPR = 2;
 const CJK_CHAR_RE =
   /[\u2e80-\u33ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/;
 
+// 剥离彩色卡通 Emoji（保留 ★、▲、$、+、·、— 等纯排印几何字符）
+const PICTOGRAPHIC_EMOJI_RE = /[\p{Extended_Pictographic}\ufe0f\u200d]+/gu;
+
 const SYSTEM_SANS_FONT =
   '"Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
-const SYSTEM_MONO_FONT =
-  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace';
+
+const EDITORIAL_METRIC_FONT =
+  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Inter", -apple-system, "PingFang SC", "Hiragino Sans", "Noto Sans CJK SC", sans-serif';
+
+/**
+ * 净化卡片配图上的文本，剔除所有彩色卡通 Emoji 与首尾冗余冒号，保持克制的社论研报排印质感
+ */
+export function stripEditorialEmojis(raw: string): string {
+  return raw
+    .replace(PICTOGRAPHIC_EMOJI_RE, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanLensHeading(raw: string): string {
+  return stripEditorialEmojis(raw)
+    .replace(/[：:]+$/u, "")
+    .trim()
+    .toUpperCase();
+}
 
 /**
  * 将中/日/英混排文本拆分为适合自动换行的原子片段：
@@ -58,7 +80,9 @@ function clampSingleLineWithEllipsis(
   const ellipsis = "…";
   const chars = Array.from(line.trimEnd());
   while (chars.length > 0) {
-    const candidate = `${chars.join("").replace(/[\s,;:—–\-/|([{（【「『、，；：]+$/u, "")}${ellipsis}`;
+    const candidate = `${chars
+      .join("")
+      .replace(/[\s,;:—–\-/|([{（【「『、，；：]+$/u, "")}${ellipsis}`;
     if (measureWidth(candidate) <= maxWidth) {
       return candidate;
     }
@@ -95,7 +119,6 @@ export function wrapTextLines(
     }
 
     if (!current) {
-      // 单个超长拉丁串：按字符切分
       let piece = "";
       for (const ch of Array.from(token)) {
         if (measureWidth(piece + ch) > maxWidth && piece) {
@@ -140,158 +163,99 @@ export function wrapTextLines(
   return lines.slice(0, maxLines);
 }
 
-interface ThemePalette {
-  canvasBg: string;
-  glowA: string;
-  glowB: string;
-  cardBg: string;
-  cardBorder: string;
-  cardShadow: string;
-  panelBg: string;
-  panelBorder: string;
-  divider: string;
-  titleColor: string;
-  metaText: string;
+interface EditorialPalette {
+  canvasBgTop: string;
+  canvasBgBottom: string;
+  outerHairline: string;
+  hairline: string;
+  hairlineStrong: string;
+  primaryText: string;
+  secondaryText: string;
   mutedText: string;
-  bodyText: string;
-  labelText: string;
-  playbookLabel: string;
-  playbookText: string;
-  pillBg: string;
-  pillBorder: string;
-  pillText: string;
-  brandSub: string;
+  accentText: string;
+  dotColor: string;
 }
 
-function getCategoryAccent(category: SignalCategory): {
-  bar: string;
-  glow: string;
-} {
-  switch (category) {
-    case "revenue":
-      return { bar: "#10B981", glow: "rgba(16, 185, 129, 0.22)" };
-    case "launch":
-      return { bar: "#F59E0B", glow: "rgba(245, 158, 11, 0.20)" };
-    case "pain_point":
-      return { bar: "#3B82F6", glow: "rgba(59, 130, 246, 0.22)" };
-    case "ai_trend":
-      return { bar: "#8B5CF6", glow: "rgba(139, 92, 246, 0.20)" };
-  }
-}
-
-function getMetricPillColors(
+function getCategoryAccentColor(
+  category: SignalCategory,
   metricType: SignalItem["metricType"],
   theme: XCardTheme
-): { bg: string; border: string; text: string } {
-  const dark = theme === "terminal_dark";
-  if (metricType === "revenue") {
-    return dark
-      ? {
-          bg: "rgba(16, 185, 129, 0.16)",
-          border: "rgba(52, 211, 153, 0.45)",
-          text: "#34D399",
-        }
-      : {
-          bg: "#ECFDF5",
-          border: "#A7F3D0",
-          text: "#047857",
-        };
+): string {
+  const isLight = theme === "editorial_light";
+  if (metricType === "revenue" || category === "revenue") {
+    return isLight ? "#047857" : "#34D399";
   }
-  if (metricType === "pain") {
-    return dark
-      ? {
-          bg: "rgba(59, 130, 246, 0.18)",
-          border: "rgba(96, 165, 250, 0.45)",
-          text: "#93C5FD",
-        }
-      : {
-          bg: "#EFF6FF",
-          border: "#BFDBFE",
-          text: "#1D4ED8",
-        };
+  if (metricType === "pain" || category === "pain_point") {
+    return isLight ? "#1D4ED8" : "#60A5FA";
   }
-  return dark
-    ? {
-        bg: "rgba(245, 158, 11, 0.16)",
-        border: "rgba(251, 191, 36, 0.45)",
-        text: "#FBBF24",
-      }
-    : {
-        bg: "#FFFBEB",
-        border: "#FDE68A",
-        text: "#B45309",
-      };
+  if (category === "ai_trend") {
+    return isLight ? "#5B21B6" : "#A78BFA";
+  }
+  return isLight ? "#B45309" : "#FBBF24";
 }
 
-function getPlatformDotHex(platform: SignalItem["sourcePlatform"]): string {
+function getPlatformDotHex(
+  platform: SignalItem["sourcePlatform"],
+  theme: XCardTheme
+): string {
+  const isLight = theme === "editorial_light";
   switch (platform) {
     case "producthunt":
-      return "#F97316";
+      return "#EA580C";
     case "hackernews":
-      return "#F59E0B";
+      return "#D97706";
     case "indiehackers":
-      return "#0EA5E9";
+      return "#0284C7";
     case "acquire":
-      return "#14B8A6";
+      return "#0D9488";
     case "reddit":
-      return "#F43F5E";
+      return "#E11D48";
     case "github":
-      return "#94A3B8";
+      return isLight ? "#18181B" : "#E4E4E7";
     case "trustmrr":
       return "#10B981";
     case "appstore":
-      return "#3B82F6";
+      return "#2563EB";
   }
 }
 
-function getPalette(theme: XCardTheme, category: SignalCategory): ThemePalette {
-  const accent = getCategoryAccent(category);
+function getEditorialPalette(
+  theme: XCardTheme,
+  category: SignalCategory,
+  metricType: SignalItem["metricType"],
+  platform: SignalItem["sourcePlatform"]
+): EditorialPalette {
+  const accentText = getCategoryAccentColor(category, metricType, theme);
+  const dotColor = getPlatformDotHex(platform, theme);
+
   if (theme === "editorial_light") {
+    // 温润暖白社论纸感（参考 Readwise / Stripe Press / Monocle，告别刺眼冷蓝灰）
     return {
-      canvasBg: "#EEF2F7",
-      glowA: accent.glow.replace("0.22", "0.14").replace("0.20", "0.12"),
-      glowB: "rgba(37, 99, 235, 0.08)",
-      cardBg: "#FFFFFF",
-      cardBorder: "#DDE5F0",
-      cardShadow: "rgba(15, 23, 42, 0.09)",
-      panelBg: "#F8FAFC",
-      panelBorder: "#E2E8F0",
-      divider: "#E2E8F0",
-      titleColor: "#0F172A",
-      metaText: "#334155",
-      mutedText: "#64748B",
-      bodyText: "#334155",
-      labelText: "#0F172A",
-      playbookLabel: "#1D4ED8",
-      playbookText: "#0F172A",
-      pillBg: "#F1F5F9",
-      pillBorder: "#E2E8F0",
-      pillText: "#475569",
-      brandSub: "#64748B",
+      canvasBgTop: "#FAF9F5",
+      canvasBgBottom: "#F5F3EC",
+      outerHairline: "#E5E2D9",
+      hairline: "#E6E3DA",
+      hairlineStrong: "#D5D0C5",
+      primaryText: "#141518",
+      secondaryText: "#3D4047",
+      mutedText: "#767982",
+      accentText,
+      dotColor,
     };
   }
 
+  // 纯粹黑曜石哑光炭黑（参考 Linear / Vercel，零蓝紫霓虹光晕）
   return {
-    canvasBg: "#070B14",
-    glowA: accent.glow,
-    glowB: "rgba(37, 99, 235, 0.18)",
-    cardBg: "#0F172A",
-    cardBorder: "#1E293B",
-    cardShadow: "rgba(0, 0, 0, 0.45)",
-    panelBg: "#111C33",
-    panelBorder: "#1E2D4A",
-    divider: "#1E293B",
-    titleColor: "#F8FAFC",
-    metaText: "#CBD5E1",
-    mutedText: "#94A3B8",
-    bodyText: "#CBD5E1",
-    labelText: "#E2E8F0",
-    playbookLabel: "#60A5FA",
-    playbookText: "#F8FAFC",
-    pillBg: "#162033",
-    pillBorder: "#26354F",
-    pillText: "#94A3B8",
-    brandSub: "#64748B",
+    canvasBgTop: "#101115",
+    canvasBgBottom: "#0B0C0E",
+    outerHairline: "#1F2229",
+    hairline: "#22252C",
+    hairlineStrong: "#2E323C",
+    primaryText: "#F4F5F7",
+    secondaryText: "#B4B9C4",
+    mutedText: "#6E7482",
+    accentText,
+    dotColor,
   };
 }
 
@@ -313,33 +277,24 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
-function drawRadarBrandMark(
+function drawMinimalRadarMark(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   size: number,
-  theme: XCardTheme
+  theme: XCardTheme,
+  hairlineColor: string
 ) {
   const isLight = theme === "editorial_light";
   ctx.save();
-  drawRoundedRect(ctx, x, y, size, size, size * 0.25);
-  const grad = ctx.createLinearGradient(x, y, x + size, y + size);
-  if (isLight) {
-    grad.addColorStop(0, "#FFFFFF");
-    grad.addColorStop(1, "#ECFDF5");
-  } else {
-    grad.addColorStop(0, "#1E293B");
-    grad.addColorStop(1, "#090D16");
-  }
-  ctx.fillStyle = grad;
+  drawRoundedRect(ctx, x, y, size, size, size * 0.24);
+  ctx.fillStyle = isLight ? "#FFFFFF" : "#16181E";
   ctx.fill();
-
-  ctx.strokeStyle = isLight ? "#6EE7B7" : "rgba(52, 211, 153, 0.48)";
-  ctx.lineWidth = Math.max(1.2, size * 0.035);
+  ctx.strokeStyle = hairlineColor;
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Keyline Dish 双主题自适应徽标（浅色 L2 Mint Paper / 深色 F5 Obsidian）
-  const pad = size * 0.17;
+  const pad = size * 0.18;
   const scale = (size - pad * 2) / 24;
   ctx.translate(x + pad, y + pad);
   ctx.scale(scale, scale);
@@ -348,7 +303,7 @@ function drawRadarBrandMark(
     const dishPath = new Path2D(
       "M10.4849 13.5151L15.133 18.1632C15.5289 18.5591 15.7513 19.0961 15.7513 19.656C15.7513 20.3394 15.4206 20.9805 14.8637 21.3766C13.3774 22.4327 11.5993 23.0001 9.776 23.0001C8.3374 23.0001 6.9207 22.6467 5.6506 21.971C2.7875 20.4461 0.999 17.4661 1 14.2222C1 12.3996 1.5673 10.6222 2.6232 9.1367C3.0193 8.5796 3.6605 8.2487 4.344 8.2487C4.9038 8.2487 5.4407 8.471 5.8366 8.8668L10.4849 13.5151Z"
     );
-    ctx.fillStyle = isLight ? "#064E3B" : "#F8FAFC";
+    ctx.fillStyle = isLight ? "#141518" : "#F4F5F7";
     ctx.fill(dishPath);
 
     ctx.lineCap = "round";
@@ -356,7 +311,7 @@ function drawRadarBrandMark(
     ctx.lineWidth = 2.2;
     ctx.stroke(new Path2D("M9.7778 14.2222L12.5 11.5"));
 
-    ctx.strokeStyle = isLight ? "#10B981" : "#34D399";
+    ctx.strokeStyle = isLight ? "#059669" : "#34D399";
     ctx.lineWidth = 2.1;
     ctx.stroke(
       new Path2D(
@@ -365,6 +320,56 @@ function drawRadarBrandMark(
     );
   }
   ctx.restore();
+}
+
+function drawHorizontalHairline(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  x2: number,
+  y: number,
+  color: string
+) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x1, Math.round(y) + 0.5);
+  ctx.lineTo(x2, Math.round(y) + 0.5);
+  ctx.stroke();
+}
+
+function drawVerticalHairline(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y1: number,
+  y2: number,
+  color: string
+) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(x) + 0.5, y1);
+  ctx.lineTo(Math.round(x) + 0.5, y2);
+  ctx.stroke();
+}
+
+function buildEditorialProductAnchor(
+  origin: ReturnType<typeof resolveSignalOriginInfo>,
+  platformLabel: string
+): string {
+  if (origin.subjectName && origin.productHost) {
+    const isSameStem =
+      origin.subjectName === origin.subjectName.toLowerCase() &&
+      origin.productHost.split(".")[0] === origin.subjectName.toLowerCase();
+    return isSameStem
+      ? origin.productHost
+      : `${origin.subjectName}  ·  ${origin.productHost}`;
+  }
+  if (origin.productHost) return origin.productHost;
+  if (origin.subjectName) return origin.subjectName;
+  if (origin.sourceProvenance !== platformLabel) {
+    return origin.sourceProvenance;
+  }
+  return "";
 }
 
 export interface RenderXCardParams {
@@ -379,8 +384,10 @@ export interface RenderXCardParams {
 }
 
 /**
- * 浏览器端零依赖 16:9（1200×675 @2x）高颜值商业信号卡片绘制器
- * 原生调用本机系统字体，四语种（简/繁/日/英）零乱码，可直接复制至剪贴板贴进 X
+ * 极简社论研报风 16:9（1200×675 @2x）商业信号分享卡渲染器：
+ * - 去套娃框、去满屏圆角胶囊、去霓虹光晕、去卡通 Emoji
+ * - 纯粹哑光炭黑（Obsidian）与暖白纸感（Warm Paper）底色 + 1px 极细网格线（Hairline Grid）
+ * - 超大号核心商业指标视觉焦点 + 原产品/原题锚点 + 宽松双栏研报拆解
  */
 export function renderXShareCardToCanvas(
   canvas: HTMLCanvasElement,
@@ -388,6 +395,7 @@ export function renderXShareCardToCanvas(
 ): void {
   const {
     item,
+    locale,
     platformLabel,
     categoryLabel,
     lens,
@@ -409,333 +417,246 @@ export function renderXShareCardToCanvas(
 
   const W = X_CARD_WIDTH;
   const H = X_CARD_HEIGHT;
-  const palette = getPalette(theme, item.category);
-  const accent = getCategoryAccent(item.category);
-
-  // 1. 底层背景与氛围光晕
-  ctx.fillStyle = palette.canvasBg;
-  ctx.fillRect(0, 0, W, H);
-
-  const glow1 = ctx.createRadialGradient(
-    W * 0.88,
-    H * 0.12,
-    20,
-    W * 0.88,
-    H * 0.12,
-    520
+  const palette = getEditorialPalette(
+    theme,
+    item.category,
+    item.metricType,
+    item.sourcePlatform
   );
-  glow1.addColorStop(0, palette.glowA);
-  glow1.addColorStop(1, "transparent");
-  ctx.fillStyle = glow1;
+
+  // 1. 全画布哑光微调纸感底色（无套娃外框、无蓝紫光晕）
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, palette.canvasBgTop);
+  bgGrad.addColorStop(1, palette.canvasBgBottom);
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
-  const glow2 = ctx.createRadialGradient(
-    W * 0.12,
-    H * 0.9,
-    20,
-    W * 0.12,
-    H * 0.9,
-    460
-  );
-  glow2.addColorStop(0, palette.glowB);
-  glow2.addColorStop(1, "transparent");
-  ctx.fillStyle = glow2;
-  ctx.fillRect(0, 0, W, H);
+  // 独立查看 PNG 时的极细收边线（贴入 X 时会被 X 原生圆角自然裁齐）
+  ctx.strokeStyle = palette.outerHairline;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
 
-  // 2. 主体圆角卡片容器
-  const padX = 36;
-  const padY = 30;
-  const cardW = W - padX * 2;
-  const cardH = H - padY * 2;
-
-  ctx.save();
-  ctx.shadowColor = palette.cardShadow;
-  ctx.shadowBlur = 32;
-  ctx.shadowOffsetY = 12;
-  drawRoundedRect(ctx, padX, padY, cardW, cardH, 24);
-  ctx.fillStyle = palette.cardBg;
-  ctx.fill();
-  ctx.restore();
-
-  drawRoundedRect(ctx, padX, padY, cardW, cardH, 24);
-  ctx.strokeStyle = palette.cardBorder;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  const innerX = padX + 44;
-  const innerRight = padX + cardW - 44;
+  const innerX = 76;
+  const innerRight = W - 76;
   const innerW = innerRight - innerX;
 
-  // 3. 顶部元数据栏：左侧（平台圆点 + 来源 + 分类 + 日期） | 右侧（核心指标胶囊 + 评分）
-  const topY = padY + 46;
-  let leftX = innerX;
-
-  // 来源色点
-  ctx.fillStyle = getPlatformDotHex(item.sourcePlatform);
+  // 2. 顶部刊头栏（Masthead：信源圆点 + 平台 + 分类  |  日期 + 评分）
+  const mastheadY = 52;
+  ctx.fillStyle = palette.dotColor;
   ctx.beginPath();
-  ctx.arc(leftX + 5, topY, 5.5, 0, Math.PI * 2);
+  ctx.arc(innerX + 4.5, mastheadY, 4.5, 0, Math.PI * 2);
   ctx.fill();
-  leftX += 19;
 
-  // 平台名
-  ctx.font = `700 18px ${SYSTEM_SANS_FONT}`;
-  ctx.fillStyle = palette.metaText;
-  ctx.fillText(platformLabel, leftX, topY);
-  leftX += ctx.measureText(platformLabel).width + 14;
+  let mastX = innerX + 18;
+  ctx.font = `700 15.5px ${SYSTEM_SANS_FONT}`;
+  ctx.fillStyle = palette.primaryText;
+  ctx.fillText(platformLabel, mastX, mastheadY);
+  mastX += ctx.measureText(platformLabel).width;
 
-  // 分类胶囊
-  ctx.font = `600 15px ${SYSTEM_SANS_FONT}`;
-  const catTextW = ctx.measureText(categoryLabel).width;
-  const catPillW = catTextW + 22;
-  drawRoundedRect(ctx, leftX, topY - 15, catPillW, 30, 8);
-  ctx.fillStyle = palette.pillBg;
-  ctx.fill();
-  ctx.strokeStyle = palette.pillBorder;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = palette.pillText;
-  ctx.fillText(categoryLabel, leftX + 11, topY);
-  leftX += catPillW + 10;
-
-  // 日期胶囊
-  ctx.font = `600 14px ${SYSTEM_MONO_FONT}`;
-  const dateText = item.dateKey;
-  const datePillW = ctx.measureText(dateText).width + 20;
-  drawRoundedRect(ctx, leftX, topY - 15, datePillW, 30, 8);
-  ctx.fillStyle = palette.pillBg;
-  ctx.fill();
+  const cleanCategory = stripEditorialEmojis(categoryLabel);
+  const cleanAge = item.ageBadge ? stripEditorialEmojis(item.ageBadge) : "";
+  const mastMetaSuffix = cleanAge
+    ? `   ·   ${cleanCategory}   ·   ${cleanAge}`
+    : `   ·   ${cleanCategory}`;
+  ctx.font = `500 15px ${SYSTEM_SANS_FONT}`;
   ctx.fillStyle = palette.mutedText;
-  ctx.fillText(dateText, leftX + 10, topY);
+  ctx.fillText(mastMetaSuffix, mastX, mastheadY);
 
-  // 右侧：评分徽章 + 核心指标胶囊（从右往左排）
-  let rightX = innerRight;
-  const scoreLabel = `${item.isTopPick ? "🔥 " : ""}${item.score.toFixed(1)}`;
-  ctx.font = `700 16px ${SYSTEM_MONO_FONT}`;
-  const scoreW = ctx.measureText(scoreLabel).width + 24;
-  rightX -= scoreW;
-  drawRoundedRect(ctx, rightX, topY - 17, scoreW, 34, 10);
-  if (item.isTopPick) {
-    ctx.fillStyle =
-      theme === "terminal_dark" ? "rgba(249, 115, 22, 0.18)" : "#FFF7ED";
-    ctx.strokeStyle =
-      theme === "terminal_dark" ? "rgba(251, 146, 60, 0.45)" : "#FED7AA";
-  } else {
-    ctx.fillStyle = palette.pillBg;
-    ctx.strokeStyle = palette.pillBorder;
+  const scoreValue = `${item.score.toFixed(1)} / 10`;
+  const datePart = `${item.dateKey}   ·   `;
+  ctx.font = `600 14.5px ${EDITORIAL_METRIC_FONT}`;
+  const scoreValW = ctx.measureText(scoreValue).width;
+  ctx.fillStyle = palette.secondaryText;
+  ctx.fillText(scoreValue, innerRight - scoreValW, mastheadY);
+
+  ctx.font = `500 14.5px ${EDITORIAL_METRIC_FONT}`;
+  const datePartW = ctx.measureText(datePart).width;
+  ctx.fillStyle = palette.mutedText;
+  ctx.fillText(datePart, innerRight - scoreValW - datePartW, mastheadY);
+
+  drawHorizontalHairline(ctx, innerX, innerRight, 80, palette.hairline);
+
+  // 3. 视觉焦点区：超大号核心商业指标 + 原产品域名/仓库锚点 + 英文原题
+  const origin = resolveSignalOriginInfo(item, locale);
+  const rawHeroMetric =
+    stripEditorialEmojis(item.metricsBadge) || `${item.score.toFixed(1)}`;
+  const heroCharLen = Array.from(rawHeroMetric).length;
+  const heroFontSize = heroCharLen <= 11 ? 44 : heroCharLen <= 16 ? 38 : 32;
+  const heroCenterY = 128;
+
+  ctx.font = `800 ${heroFontSize}px ${EDITORIAL_METRIC_FONT}`;
+  const maxHeroW = Math.floor(innerW * 0.48);
+  const fittedHeroMetric =
+    ctx.measureText(rawHeroMetric).width > maxHeroW
+      ? clampSingleLineWithEllipsis(rawHeroMetric, maxHeroW, (s) =>
+          ctx.measureText(s).width
+        )
+      : rawHeroMetric;
+  ctx.fillStyle = palette.accentText;
+  ctx.fillText(fittedHeroMetric, innerX, heroCenterY);
+  const heroActualW = ctx.measureText(fittedHeroMetric).width;
+
+  const productAnchor = buildEditorialProductAnchor(origin, platformLabel);
+  if (productAnchor) {
+    const divX = innerX + heroActualW + 28;
+    const metaX = divX + 26;
+    const metaAvailW = innerRight - metaX;
+
+    if (metaAvailW >= 160) {
+      drawVerticalHairline(
+        ctx,
+        divX,
+        heroCenterY - 16,
+        heroCenterY + 16,
+        palette.hairlineStrong
+      );
+
+      ctx.font = `600 18px ${EDITORIAL_METRIC_FONT}`;
+      const single =
+        ctx.measureText(productAnchor).width > metaAvailW
+          ? clampSingleLineWithEllipsis(productAnchor, metaAvailW, (s) =>
+              ctx.measureText(s).width
+            )
+          : productAnchor;
+      ctx.fillStyle = palette.primaryText;
+      ctx.fillText(single, metaX, heroCenterY);
+    }
   }
-  ctx.fill();
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
-  ctx.fillStyle = item.isTopPick
-    ? theme === "terminal_dark"
-      ? "#FDBA74"
-      : "#C2410C"
-    : palette.metaText;
-  ctx.fillText(scoreLabel, rightX + 12, topY);
 
-  // 核心指标胶囊
-  const badgeText = item.metricsBadge.trim();
-  if (badgeText) {
-    rightX -= 12;
-    ctx.font = `700 17px ${SYSTEM_MONO_FONT}`;
-    const maxBadgeW = 320;
-    const displayBadge =
-      ctx.measureText(badgeText).width > maxBadgeW - 28
-        ? clampSingleLineWithEllipsis(badgeText, maxBadgeW - 28, (s) =>
-            ctx.measureText(s).width
-          )
-        : badgeText;
-    const badgeW = ctx.measureText(displayBadge).width + 30;
-    rightX -= badgeW;
-    const pillStyle = getMetricPillColors(item.metricType, theme);
-    drawRoundedRect(ctx, rightX, topY - 18, badgeW, 36, 999);
-    ctx.fillStyle = pillStyle.bg;
-    ctx.fill();
-    ctx.strokeStyle = pillStyle.border;
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
-    ctx.fillStyle = pillStyle.text;
-    ctx.fillText(displayBadge, rightX + 15, topY);
-  }
+  // 4. 粗体社论主标题（最多 2 行，克制留白）
+  const cleanTitle = stripEditorialEmojis(item.title);
+  const titleTopY = 174;
+  const isLongTitle = cleanTitle.length > 44;
+  const titleFontSize = isLongTitle ? 33 : 37;
+  const titleLineHeight = isLongTitle ? 46 : 50;
 
-  // 4. 主标题区（最多 2 行，自适应字号）
-  const titleTopY = padY + 92;
-  const cleanTitle = item.title.trim();
-  const titleFontSize = cleanTitle.length > 42 ? 31 : 35;
-  const titleLineHeight = cleanTitle.length > 42 ? 42 : 46;
   ctx.font = `800 ${titleFontSize}px ${SYSTEM_SANS_FONT}`;
   const titleLines = wrapTextLines(cleanTitle, innerW, 2, (s) =>
     ctx.measureText(s).width
   );
-
-  ctx.fillStyle = palette.titleColor;
+  ctx.fillStyle = palette.primaryText;
   titleLines.forEach((line, idx) => {
-    ctx.fillText(line, innerX, titleTopY + idx * titleLineHeight + titleLineHeight / 2);
+    ctx.fillText(
+      line,
+      innerX,
+      titleTopY + idx * titleLineHeight + titleLineHeight / 2
+    );
   });
 
-  // 5. 三要素商业透镜面板（带分类左侧色条）
-  const panelTopY = titleTopY + titleLines.length * titleLineHeight + 22;
-  const footerH = 74;
-  const panelBottomY = padY + cardH - footerH - 18;
-  const panelH = Math.max(240, panelBottomY - panelTopY);
+  const titleBottomY = titleTopY + titleLines.length * titleLineHeight;
 
-  drawRoundedRect(ctx, innerX, panelTopY, innerW, panelH, 16);
-  ctx.fillStyle = palette.panelBg;
-  ctx.fill();
-  ctx.strokeStyle = palette.panelBorder;
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
+  // 5. 左右双栏极细网格研报拆解（01 变现/商业面  |  02 破局/抄作业点，无边框套娃、无 Emoji）
+  const gridTopY = Math.max(296, titleBottomY + 24);
+  const footerTopY = 588;
+  drawHorizontalHairline(ctx, innerX, innerRight, gridTopY, palette.hairline);
 
-  // 左侧分类强调竖条（裁剪到圆角内部）
-  ctx.save();
-  drawRoundedRect(ctx, innerX, panelTopY, innerW, panelH, 16);
-  ctx.clip();
-  ctx.fillStyle = accent.bar;
-  ctx.fillRect(innerX, panelTopY, 5.5, panelH);
-  ctx.restore();
+  const midX = W / 2;
+  const colGutter = 38;
+  const colW = midX - innerX - colGutter;
 
-  const lensRows = [
-    {
-      label: lens.whatItIs.trim(),
-      value: item.whatItIs.trim(),
-      isPlaybook: false,
-    },
-    {
-      label: lens.monetization.trim(),
-      value: item.businessSignal.trim(),
-      isPlaybook: false,
-    },
-    {
-      label: lens.playbook.trim(),
-      value: item.indieTakeaway.trim(),
-      isPlaybook: true,
-    },
-  ];
+  drawVerticalHairline(
+    ctx,
+    midX,
+    gridTopY + 26,
+    footerTopY - 26,
+    palette.hairline
+  );
 
-  const rowPadX = 28;
-  const rowContentW = innerW - rowPadX * 2;
-  const rowFontSize = panelH < 275 ? 19.5 : 21;
-  const rowLineHeight = panelH < 275 ? 29 : 31;
+  const leftHeading = `01   ${cleanLensHeading(lens.monetization)}`;
+  const rightHeading = `02   ${cleanLensHeading(lens.playbook)}`;
+  const leftBody = stripEditorialEmojis(item.businessSignal);
+  const rightBody = stripEditorialEmojis(item.indieTakeaway);
 
-  // 预先测量三行布局，计算居中垂直排布
-  const measuredRows = lensRows.map((row) => {
-    const labelFont = `700 ${rowFontSize}px ${SYSTEM_SANS_FONT}`;
-    const bodyFont = `${row.isPlaybook ? 600 : 400} ${rowFontSize}px ${SYSTEM_SANS_FONT}`;
+  const bodyFontSize = 20;
+  const bodyLineHeight = 33;
 
-    ctx.font = labelFont;
-    const labelW = ctx.measureText(row.label).width + 8;
+  ctx.font = `400 ${bodyFontSize}px ${SYSTEM_SANS_FONT}`;
+  const leftLines = wrapTextLines(leftBody, colW, 4, (s) =>
+    ctx.measureText(s).width
+  );
 
-    // 把标签与正文按「首行同行、次行齐左」排版
-    ctx.font = bodyFont;
-    const firstLineBudget = Math.max(180, rowContentW - labelW);
-    const allTokens = tokenizeForCanvasWrap(row.value);
+  ctx.font = `500 ${bodyFontSize}px ${SYSTEM_SANS_FONT}`;
+  const rightLines = wrapTextLines(rightBody, colW, 4, (s) =>
+    ctx.measureText(s).width
+  );
 
-    // 手动构建最多 2 行：第一行宽度为 firstLineBudget，第二行宽度为 rowContentW
-    let line1 = "";
-    let nextIdx = 0;
-    for (; nextIdx < allTokens.length; nextIdx += 1) {
-      const tok = allTokens[nextIdx]!;
-      if (tok === " " && !line1) continue;
-      const cand = line1 ? `${line1}${tok}` : tok;
-      if (ctx.measureText(cand).width <= firstLineBudget) {
-        line1 = cand;
-      } else {
-        break;
-      }
-    }
-    const restText = allTokens.slice(nextIdx).join("").trim();
-    const restLines = restText
-      ? wrapTextLines(restText, rowContentW, 1, (s) => ctx.measureText(s).width)
-      : [];
+  const maxColLines = Math.max(1, leftLines.length, rightLines.length);
+  const blockContentH = 26 + maxColLines * bodyLineHeight;
+  const gridAvailH = footerTopY - gridTopY;
+  const colStartY =
+    gridTopY + Math.max(28, Math.floor((gridAvailH - blockContentH) / 2));
 
-    const lines = [line1.trimEnd(), ...restLines];
-    return {
-      ...row,
-      labelFont,
-      bodyFont,
-      labelW,
-      lines,
-      height: lines.length * rowLineHeight,
-    };
+  // 左栏：01 变现/商业面
+  ctx.font = `700 13.5px ${EDITORIAL_METRIC_FONT}`;
+  ctx.fillStyle = palette.mutedText;
+  ctx.fillText(leftHeading, innerX, colStartY);
+
+  ctx.font = `400 ${bodyFontSize}px ${SYSTEM_SANS_FONT}`;
+  ctx.fillStyle = palette.secondaryText;
+  leftLines.forEach((line, idx) => {
+    ctx.fillText(
+      line,
+      innerX,
+      colStartY + 34 + idx * bodyLineHeight
+    );
   });
 
-  const totalTextHeight = measuredRows.reduce((sum, r) => sum + r.height, 0);
-  const gapSpace = Math.max(14, (panelH - 36 - totalTextHeight) / 2);
-  let rowY = panelTopY + Math.max(18, (panelH - totalTextHeight - gapSpace * 2) / 2);
+  // 右栏：02 破局/抄作业点
+  const rightColX = midX + colGutter;
+  ctx.font = `700 13.5px ${EDITORIAL_METRIC_FONT}`;
+  ctx.fillStyle = palette.accentText;
+  ctx.fillText(rightHeading, rightColX, colStartY);
 
-  measuredRows.forEach((row, idx) => {
-    if (row.isPlaybook) {
-      const divY = rowY - gapSpace / 2;
-      ctx.strokeStyle = palette.divider;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(innerX + rowPadX, divY);
-      ctx.lineTo(innerX + innerW - rowPadX, divY);
-      ctx.stroke();
-    }
-
-    const firstCenterY = rowY + rowLineHeight / 2;
-    ctx.font = row.labelFont;
-    ctx.fillStyle = row.isPlaybook ? palette.playbookLabel : palette.labelText;
-    ctx.fillText(row.label, innerX + rowPadX, firstCenterY);
-
-    ctx.font = row.bodyFont;
-    ctx.fillStyle = row.isPlaybook ? palette.playbookText : palette.bodyText;
-    if (row.lines[0]) {
-      ctx.fillText(row.lines[0], innerX + rowPadX + row.labelW, firstCenterY);
-    }
-    if (row.lines[1]) {
-      ctx.fillText(
-        row.lines[1],
-        innerX + rowPadX,
-        firstCenterY + rowLineHeight
-      );
-    }
-
-    rowY += row.height + (idx < measuredRows.length - 1 ? gapSpace : 0);
+  ctx.font = `500 ${bodyFontSize}px ${SYSTEM_SANS_FONT}`;
+  ctx.fillStyle = palette.primaryText;
+  rightLines.forEach((line, idx) => {
+    ctx.fillText(
+      line,
+      rightColX,
+      colStartY + 34 + idx * bodyLineHeight
+    );
   });
 
-  // 6. 底部品牌水印栏（防二次搬运丢品牌）
-  const footerTopY = padY + cardH - footerH;
-  ctx.strokeStyle = palette.divider;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(innerX, footerTopY);
-  ctx.lineTo(innerRight, footerTopY);
-  ctx.stroke();
+  // 6. 极简社论底栏（Colophon：单行品牌域名水印 + 纯排印无框标签）
+  drawHorizontalHairline(ctx, innerX, innerRight, footerTopY, palette.hairline);
 
-  const footerCenterY = footerTopY + footerH / 2 + 2;
-  drawRadarBrandMark(ctx, innerX, footerCenterY - 19, 38, theme);
+  const footerCenterY = footerTopY + (H - footerTopY) / 2;
+  drawMinimalRadarMark(
+    ctx,
+    innerX,
+    footerCenterY - 13,
+    26,
+    theme,
+    palette.hairlineStrong
+  );
 
-  const brandTextX = innerX + 52;
-  ctx.font = `800 19px ${SYSTEM_SANS_FONT}`;
-  ctx.fillStyle = palette.titleColor;
-  ctx.fillText("AI Founder Radar", brandTextX, footerCenterY - 8);
+  let brandCursorX = innerX + 38;
+  ctx.font = `700 16px ${SYSTEM_SANS_FONT}`;
+  ctx.fillStyle = palette.primaryText;
+  ctx.fillText("AI Founder Radar", brandCursorX, footerCenterY);
+  brandCursorX += ctx.measureText("AI Founder Radar").width;
 
-  const subBrand = xHandle ? `${siteHost}  ·  @${xHandle}` : siteHost;
-  ctx.font = `600 13.5px ${SYSTEM_MONO_FONT}`;
-  ctx.fillStyle = palette.brandSub;
-  ctx.fillText(subBrand, brandTextX, footerCenterY + 12);
+  const hostWatermark = xHandle
+    ? `   ·   ${siteHost}   ·   @${xHandle}`
+    : `   ·   ${siteHost}`;
+  ctx.font = `500 14px ${EDITORIAL_METRIC_FONT}`;
+  ctx.fillStyle = palette.mutedText;
+  ctx.fillText(hostWatermark, brandCursorX, footerCenterY);
+  brandCursorX += ctx.measureText(hostWatermark).width;
 
-  // 右下角展示最多 3 个静态标签胶囊
-  const displayTags = item.tags.slice(0, 3);
-  ctx.font = `600 14px ${SYSTEM_SANS_FONT}`;
-  let tagCursorX = innerRight;
-  for (let i = displayTags.length - 1; i >= 0; i -= 1) {
-    const tag = displayTags[i]!.trim();
-    if (!tag) continue;
-    const tw = ctx.measureText(tag).width + 20;
-    if (tagCursorX - tw < brandTextX + 270) break;
-    tagCursorX -= tw;
-    drawRoundedRect(ctx, tagCursorX, footerCenterY - 14, tw, 28, 7);
-    ctx.fillStyle = palette.pillBg;
-    ctx.fill();
-    ctx.strokeStyle = palette.pillBorder;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = palette.pillText;
-    ctx.fillText(tag, tagCursorX + 10, footerCenterY);
-    tagCursorX -= 8;
+  // 右下角展示最多 2 个纯排印标签（去除胶囊边框噪音）
+  const cleanTags = item.tags
+    .map((t) => stripEditorialEmojis(t))
+    .filter(Boolean)
+    .slice(0, 2);
+  if (cleanTags.length > 0) {
+    const tagLine = cleanTags.join("    ");
+    ctx.font = `500 14px ${SYSTEM_SANS_FONT}`;
+    const tagW = ctx.measureText(tagLine).width;
+    if (innerRight - tagW > brandCursorX + 32) {
+      ctx.fillStyle = palette.mutedText;
+      ctx.fillText(tagLine, innerRight - tagW, footerCenterY);
+    }
   }
 
   ctx.restore();
@@ -777,7 +698,6 @@ export async function copyCanvasImageToClipboard(
       navigator.clipboard?.write &&
       typeof ClipboardItem !== "undefined"
     ) {
-      // 使用 Promise<Blob> 构造 ClipboardItem，兼容 Safari 异步手势限制
       const blobPromise = canvasToPngBlob(canvas);
       const item = new ClipboardItem({ "image/png": blobPromise });
       await navigator.clipboard.write([item]);
